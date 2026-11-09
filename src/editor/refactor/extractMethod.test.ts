@@ -217,9 +217,30 @@ describe("wholeStatements", () => {
       "the selection contains return, yield or await",
     );
     expect(r("def f():\n    a = 1 ; global g\n")).toBe("the selection declares a global or nonlocal name");
-    expect(r("def f():\n    match = 1\n")).toBe(
+    // A whole `match` statement, not just its head.
+    const m = "def f(v):\n    match v:\n        case 1:\n            pass\n    return None\n";
+    const from = m.indexOf("    match v:");
+    expect(wholeStatements(doc(m), from, m.indexOf("    return"))).toBe(
       "the selection contains a match statement, which the syntax service does not resolve",
     );
+  });
+
+  it("refuses a starred assignment target but not a starred call", () => {
+    const src = "def f(pair):\n    first, *rest = pair\n    return first\n";
+    const from = src.indexOf("    first, *rest");
+    expect(wholeStatements(doc(src), from, src.indexOf("    return"))).toBe(
+      "the selection uses a starred assignment target ('*rest'), which the syntax service does not resolve",
+    );
+    // A starred call is fine: nothing precedes its `=`.
+    const call = "def f(args):\n    out = g(*args)\n    return out\n";
+    const cf = call.indexOf("    out = g");
+    expect(typeof wholeStatements(doc(call), cf, call.indexOf("    return"))).not.toBe("string");
+  });
+
+  it("accepts a variable named `match` (it is a soft keyword)", () => {
+    const src = "def f(re, s):\n    match = re.search(s)\n    return match\n";
+    const from = src.indexOf("    match =");
+    expect(typeof wholeStatements(doc(src), from, src.indexOf("    return"))).not.toBe("string");
   });
 
   it("refuses module-level statements (no indent)", () => {

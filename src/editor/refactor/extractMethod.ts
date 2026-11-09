@@ -37,10 +37,27 @@ const LEAVING = /\b(return|yield|await)\b/;
 /** Declarations that make a name belong to a scope other than its block. */
 const REBOUND = /\b(global|nonlocal)\b/;
 /**
- * Patterns the bundled Python scope query does not cover (measured; see the
- * POC probe): `match`/`case` bindings and starred assignment targets.
+ * Patterns the bundled Python scope query does not cover (measured with
+ * `probe_dataflow.rs`): `match`/`case` bindings, and a starred assignment
+ * target (`first, *rest = pair`) — `rest` comes back `Unresolved`, so it would
+ * be skipped and the value silently lost.
  */
-const UNCOVERED = /^\s*(match|case)\b/m;
+const MATCH = /^\s*(match|case)\s+.+:\s*(#.*)?$/m;
+
+/**
+ * A line whose left of `=` embeds `*name`: a starred assignment target. Read
+ * as text because the scope query does not report one and the node API exposes
+ * no children. `f(*args)` is not one: nothing precedes its `=`.
+ */
+function starredTarget(text: string): string | null {
+  for (const line of text.split("\n")) {
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+    const m = /\*\s*([A-Za-z_]\w*)/.exec(line.slice(0, eq));
+    if (m) return m[1]!;
+  }
+  return null;
+}
 
 export interface ExtractPlan {
   /** The whole statements the call replaces (document offsets). */
@@ -128,8 +145,11 @@ export function wholeStatements(
   const text = doc.sliceString(from, to);
   if (LEAVING.test(text)) return "the selection contains return, yield or await";
   if (REBOUND.test(text)) return "the selection declares a global or nonlocal name";
-  if (UNCOVERED.test(text))
-    return "the selection contains a match statement, which the syntax service does not resolve";
+  if (MATCH.test(text)) return "the selection contains a match statement, which the syntax service does not resolve";
+  const starred = starredTarget(text);
+  if (starred) {
+    return `the selection uses a starred assignment target ('*${starred}'), which the syntax service does not resolve`;
+  }
   return { from, to, indent };
 }
 
