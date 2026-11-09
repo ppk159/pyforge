@@ -339,6 +339,34 @@ describe("planExtract", () => {
     expect(await planExtract(v)).toBe("the selection assigns 'order', which is declared outside it");
   });
 
+  it("refuses a selection that starts inside a construct (an except clause)", async () => {
+    // `statement` is the statement inside the clause, not the clause itself, so
+    // the selection starts before it: extracting would take half the clause.
+    const src = [
+      "def parse(p):",
+      "    try:",
+      "        return load(p)",
+      "    except ValueError as e:",
+      "        log(e)",
+      "",
+    ].join("\n");
+    H.text = src;
+    const clauseFrom = src.indexOf("        log(e)");
+    const clauseSpan = src.slice(clauseFrom);
+    H.blockSpan = { from: clauseFrom, to: clauseFrom + clauseSpan.length };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["try_statement", "    try:\n        return load(p)\n    except ValueError as e:\n        log(e)"],
+      ["block", clauseSpan, 0, "body"],
+      ["expression_statement", "        log(e)"],
+    ]);
+    const from = src.indexOf("    except ValueError as e:");
+    const to = clauseFrom;
+    const v = editor(src, { anchor: from, head: to });
+    expect(await planExtract(v)).toBe("the selection must start at a statement of the enclosing block");
+  });
+
   it("refuses a selection with no block at the caret", async () => {
     const v = editor(SRC, { anchor: 0, head: 10 });
     expect(await planExtract(v)).toBe("select statements inside a function");

@@ -76,6 +76,11 @@ function offsets(doc: Text, range: Range): { from: number; to: number } {
   return rangeToOffsets(doc, range);
 }
 
+/** Offsets of a node in the document. */
+function spanOf(doc: Text, node: { range: Range }): { from: number; to: number } {
+  return rangeToOffsets(doc, node.range);
+}
+
 function indentOf(doc: Text, pos: number): string {
   return /^[ \t]*/.exec(doc.lineAt(pos).text)![0];
 }
@@ -241,6 +246,12 @@ export async function planExtract(view: EditorView): Promise<ExtractPlan | strin
   if (at.hasError) return "the selection contains syntax errors";
   if (at.functionBoundary) return "the selection crosses a lambda or a nested function";
   if (!at.block || !at.statement) return "select statements inside a function";
+  // `statement` is the block's direct child holding the selection's start. A
+  // selection that starts inside a construct (`except`, `else`, a `case` body)
+  // begins before that statement, and would extract half a clause.
+  if (doc.lineAt(spanOf(doc, at.statement).from).from !== sel.from) {
+    return "the selection must start at a statement of the enclosing block";
+  }
 
   const range = wholeStatements(doc, sel.from, sel.to);
   if (typeof range === "string") return range;
