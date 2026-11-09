@@ -30,6 +30,7 @@ import {
   type RefactoringId,
 } from "./catalog";
 import { introduceFallback, type IntroduceKind } from "./introduce";
+import { extractMethodFallback } from "./extractMethod";
 import { languageName, queryRefactorActions } from "./query";
 import {
   EXPRESSION_REFACTORINGS,
@@ -109,6 +110,10 @@ const INTRODUCE: Partial<Record<RefactoringId, IntroduceKind>> = {
   extractConstant: "constant",
 };
 
+/** Languages whose syntax-only Extract Method is implemented.
+ *  Kept in sync with `extractMethod.ts` (Python only for now). */
+const EXTRACT_METHOD_LANGUAGES = new Set(["python"]);
+
 /** First error diagnostic on the selected lines (servers offer nothing over broken code). */
 function errorAround(view: EditorView): string | null {
   const sel = view.state.selection.main;
@@ -180,6 +185,11 @@ export async function runRefactoring(view: EditorView, id: RefactoringId): Promi
   if (introduce) {
     const reason = answer.status === "ok" ? "empty" : answer.status === "notReady" ? "notReady" : "error";
     if (await introduceFallback(view, introduce, reason)) return;
+  }
+  // Extract Method has a syntax-only implementation for the languages where
+  // the structure service can resolve the free variables (see `extractMethod.ts`).
+  if (id === "extractMethod" && EXTRACT_METHOD_LANGUAGES.has(ctx.language)) {
+    if (await extractMethodFallback(view)) return;
   }
   showHint(view, cannotPerform(await unavailableReason(view, r, answer, all)));
 }
