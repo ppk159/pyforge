@@ -336,6 +336,122 @@ describe("planExtract", () => {
     expect(plan.insertAt).toBe(SRC.indexOf("    return total") + "    return total".length);
   });
 
+  it("keeps `self` as a parameter (it is a keyword in the shared list, an implicit parameter in Python)", async () => {
+    const src = [
+      "class A:",
+      "    def add(self, title):",
+      "        task = make(title)",
+      "        self._tasks.append(task)",
+      "        return task",
+      "",
+    ].join("\n");
+    const from = src.indexOf("        task = make");
+    const to = src.indexOf("        return task");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["class_definition", src.trimEnd()],
+      [
+        "block",
+        "    def add(self, title):\n        task = make(title)\n        self._tasks.append(task)\n        return task",
+        0,
+        "body",
+      ],
+      [
+        "function_definition",
+        "    def add(self, title):\n        task = make(title)\n        self._tasks.append(task)\n        return task",
+      ],
+      ["block", src.slice(from, to), 0, "body"],
+      ["assignment", "task = make(title)"],
+    ]);
+    const selfParam = src.indexOf("(self") + 1;
+    local("self", { from: selfParam, to: selfParam + 4 }, [
+      { from: src.indexOf("self._tasks"), to: src.indexOf("self._tasks") + 4 },
+    ]);
+    const titleParam = src.indexOf("title)") - 5;
+    local("title", { from: titleParam, to: titleParam + 5 }, [
+      { from: src.indexOf("make(title)") + 5, to: src.indexOf("make(title)") + 10 },
+    ]);
+    const taskDecl = src.indexOf("task = make");
+    local("task", { from: taskDecl, to: taskDecl + 4 }, [
+      { from: src.indexOf("append(task)") + 7, to: src.indexOf("append(task)") + 11 },
+      { from: src.indexOf("return task") + 7, to: src.indexOf("return task") + 11 },
+    ]);
+    const v = editor(src, { anchor: from, head: to });
+    const plan = await planExtract(v);
+    expect(typeof plan).not.toBe("string");
+    if (typeof plan === "string") return;
+    expect(plan.params).toEqual(["title", "self"]);
+    expect(plan.output).toBe("task");
+    expect(plan.defIndent).toBe("    ");
+  });
+
+  it("resolves a name whose first occurrence is a keyword-argument label", async () => {
+    const src = [
+      "def make(title, tags):",
+      "    task = Task(title.strip(), tags=set(tags))",
+      "    return task",
+      "",
+    ].join("\n");
+    const from = src.indexOf("    task = Task");
+    const to = src.indexOf("    return task");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", src.slice(from, to), 0, "body"],
+      ["assignment", "task = Task(title.strip(), tags=set(tags))"],
+    ]);
+    const tagsParam = src.indexOf("tags)") - 4;
+    local("tags", { from: tagsParam, to: tagsParam + 4 }, [
+      { from: src.indexOf("set(tags)") + 4, to: src.indexOf("set(tags)") + 8 },
+    ]);
+    const titleParam = src.indexOf("(title,") + 1;
+    local("title", { from: titleParam, to: titleParam + 5 }, [
+      { from: src.indexOf("Task(title") + 5, to: src.indexOf("Task(title") + 10 },
+    ]);
+    const taskDecl2 = src.indexOf("task = Task");
+    local("task", { from: taskDecl2, to: taskDecl2 + 4 }, [
+      { from: src.indexOf("return task") + 7, to: src.indexOf("return task") + 11 },
+    ]);
+    const v = editor(src, { anchor: from, head: to });
+    const plan = await planExtract(v);
+    expect(typeof plan).not.toBe("string");
+    if (typeof plan === "string") return;
+    expect(plan.params).toEqual(["title", "tags"]);
+  });
+
+  it("refuses a name the scope query misses when the enclosing function binds it", async () => {
+    // `tags` is a parameter but `locals` cannot resolve it: passing it would be
+    // wrong to skip, because the new method would read an undefined name.
+    const src = ["def make(title, *tags: str):", "    task = Task(title, tags=set(tags))", "    return task", ""].join(
+      "\n",
+    );
+    const from = src.indexOf("    task = Task");
+    const to = src.indexOf("    return task");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", src.slice(from, to), 0, "body"],
+      ["assignment", "task = Task(title, tags=set(tags))"],
+    ]);
+    // `locals` answers noIdentifier for `tags` (the query gap the POC found).
+    const titleParam2 = src.indexOf("(title") + 1;
+    local("title", { from: titleParam2, to: titleParam2 + 5 }, [
+      { from: src.indexOf("Task(title") + 5, to: src.indexOf("Task(title") + 10 },
+    ]);
+    const taskDecl3 = src.indexOf("task = Task");
+    local("task", { from: taskDecl3, to: taskDecl3 + 4 }, [
+      { from: src.indexOf("return task") + 7, to: src.indexOf("return task") + 11 },
+    ]);
+    const v = editor(src, { anchor: from, head: to });
+    expect(await planExtract(v)).toBe("'tags' is local to this function but the syntax service cannot resolve it here");
+  });
+
   it("refuses when the selection assigns a parameter", async () => {
     // `order` is declared outside the selection (a parameter) and written inside.
     const src = "def process(order):\n    order = normalize(order)\n    print(order)\n";

@@ -191,4 +191,10 @@ fn probe_real_python_dataflow() {
     return out
 "#;
     case("walrus", walrus, "if (n := len(row)) > 2:\n            out.append(n)");
+
+    // 13. Annotated splat parameters (the rule added for the POC).
+    let annot = r#"def f(a: int, *rest: int, **kw: str):
+    return a, rest, kw
+"#;
+    case("annotated splats", annot, "return a, rest, kw");
 }

@@ -16,7 +16,7 @@
 import type { ChangeSet, EditorState, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
-import type { ExpressionAt, Locals, Range, SyntaxNode } from "@/bindings";
+import type { Locals, LocalSymbol, Range, SyntaxNode } from "@/bindings";
 import { structure } from "@/editor/structure";
 import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { docOf } from "@/editor/lsp/lsp";
@@ -82,10 +82,6 @@ interface Prepared {
   view: EditorView;
   ctx: EditorDocContext;
   doc: Text;
-}
-
-function span(doc: Text, node: { range: Range }): { from: number; to: number } {
-  return rangeToOffsets(doc, node.range);
 }
 
 /** Offsets of a `Range` (definitions and references arrive as ranges, not nodes). */
@@ -172,6 +168,26 @@ async function isWritten(p: Prepared, range: Range): Promise<boolean> {
   return false;
 }
 
+/**
+ * `self` and `cls` are in the shared keyword list (they are keywords in Rust and
+ * Ruby) but are ordinary implicit parameters in Python: skipping them would drop
+ * a free variable from the extracted signature.
+ */
+const IMPLICIT_PARAMS = new Set(["self", "cls"]);
+
+/**
+ * Whether the enclosing declaration binds `name`: a parameter of its signature
+ * or an assignment target in its body. Used when `locals` cannot resolve a name
+ * in the selection — it is then a local the scope query missed, not a module
+ * name that stays in scope, and passing it wrongly would raise at runtime.
+ */
+function bindsLocally(ownerText: string, name: string): boolean {
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const signature = ownerText.slice(0, ownerText.indexOf(":\n") + 1 || ownerText.length);
+  if (new RegExp(`(^|[^\\w.])${n}\\s*[:=,]`, "m").test(signature)) return true;
+  return new RegExp(`(^|[^\\w.])${n}\\s*=(?!=)`, "m").test(ownerText);
+}
+
 interface Flow {
   params: string[];
   output: string | null;
@@ -181,32 +197,51 @@ interface Flow {
  * Which identifiers the selected statements read from outside the selection
  * and which one they write for the caller. One `locals` answer per distinct
  * name: `LocalSymbol.references` already lists every occurrence of it, so the
- * cost stays at one request per name rather than one per occurrence.
+ * cost stays around one request per name.
+ *
+ * Every occurrence of a name is tried, cheapest first: the first one may sit in
+ * a member position (`tags=` in `f(tags=tags)`) where `locals` answers about
+ * the label rather than the variable.
  */
-async function analyze(p: Prepared, from: number, to: number): Promise<Flow | string> {
+async function analyze(p: Prepared, from: number, to: number, ownerText: string): Promise<Flow | string> {
   const text = p.doc.sliceString(from, to);
-  const names = new Map<string, number>();
+  const names = new Map<string, number[]>();
   for (const m of text.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
-    if (isKeyword(m[0]) || names.has(m[0])) continue;
-    names.set(m[0], from + m.index);
+    const name = m[0];
+    if (isKeyword(name) && !IMPLICIT_PARAMS.has(name)) continue;
+    const at = from + m.index;
+    const list = names.get(name);
+    if (list) list.push(at);
+    else names.set(name, [at]);
     if (names.size >= MAX_NAMES) break;
   }
 
   const params: { name: string; at: number }[] = [];
   const written: string[] = [];
-  for (const [name, pos] of names) {
-    let answer: Locals;
-    try {
-      const line = p.doc.lineAt(pos);
-      answer = await structure.locals(p.ctx.doc, { line: line.number - 1, col: pos - line.from });
-    } catch {
+  for (const [name, positions] of names) {
+    let symbol: LocalSymbol | null = null;
+    for (const pos of positions) {
+      let answer: Locals;
+      try {
+        const line = p.doc.lineAt(pos);
+        answer = await structure.locals(p.ctx.doc, { line: line.number - 1, col: pos - line.from });
+      } catch {
+        continue;
+      }
+      // Comments and strings are not variables; a member position answers about
+      // the member, so the next occurrence of the same name is tried instead.
+      if (answer.status !== "local" || answer.symbol.name !== name) continue;
+      symbol = answer.symbol;
+      break;
+    }
+    if (!symbol) {
+      // A module-level or builtin name stays in scope at the new declaration, so
+      // passing it would be wrong; but a local the query missed must be refused.
+      if (bindsLocally(ownerText, name)) {
+        return `'${name}' is local to this function but the syntax service cannot resolve it here`;
+      }
       continue;
     }
-    // Comments, strings and attribute names are not variables of this function.
-    if (answer.status !== "local") continue;
-    const symbol = answer.symbol;
-    if (process.env.DBG) console.log("name", name, "sym", JSON.stringify(symbol)?.slice(0, 200));
-    if (symbol.name !== name) continue;
     if (!symbol.certain) return `'${name}' is declared more than once here`;
     const inside = within(offsets(p.doc, symbol.definition), from, to);
     const refs = symbol.references.map((r) => offsets(p.doc, r));
@@ -233,16 +268,46 @@ async function analyze(p: Prepared, from: number, to: number): Promise<Flow | st
   return { params: params.map((x) => x.name), output: written[0] ?? null };
 }
 
-/** The innermost enclosing function declaration, from the statement's ancestors. */
-async function enclosingFunction(p: Prepared, at: ExpressionAt): Promise<SyntaxNode | null> {
-  if (!at.statement) return null;
-  const n = await structure.nodeAt(p.ctx.doc, at.statement.range);
-  if (!n) return null;
-  const chain = [n.node, ...n.ancestors];
-  for (let i = chain.length - 1; i >= 0; i--) {
-    if (/function_definition/.test(chain[i]!.kind)) return chain[i]!;
+/** Node kinds whose direct children are statements. Same list as `introduce.ts`. */
+const BLOCKISH =
+  /^(block|chunk|statement_list|program|module|source_file|compound_statement|statement_block|body|do_block|statements|declaration_list|class_body|template_body)$/;
+
+/** First offset of `[from, to)` that is not whitespace (the statement itself). */
+function firstContent(doc: Text, from: number, to: number): number {
+  for (let i = from; i < to; i++) {
+    const c = doc.sliceString(i, i + 1);
+    if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r" && c !== "\\") return i;
   }
-  return null;
+  return from;
+}
+
+interface Block {
+  /** The statement the selection starts in: a direct child of `block`. */
+  statement: SyntaxNode;
+  block: SyntaxNode;
+  /** The declaration that owns `block` (the enclosing function), if any. */
+  owner: SyntaxNode | undefined;
+}
+
+/**
+ * The statement list the selection belongs to and the statement it starts in.
+ *
+ * `expressionAt` answers for *expressions*: on a multi-line statement block it
+ * reports the enclosing declaration instead of the first statement, so the
+ * ancestors of the node at the selection's first character are walked instead.
+ */
+async function locateBlock(p: Prepared, sel: { from: number; to: number }): Promise<Block | string> {
+  const at = firstContent(p.doc, sel.from, sel.to);
+  const n = await structure.nodeAt(p.ctx.doc, offsetsToRange(p.doc, at, at));
+  if (!n) return "select statements inside a function";
+  const chain = [n.node, ...n.ancestors];
+  for (let i = 0; i + 1 < chain.length; i++) {
+    const node = chain[i]!;
+    const parent = chain[i + 1]!;
+    if (BLOCKISH.test(node.kind) || !BLOCKISH.test(parent.kind)) continue;
+    return { statement: node, block: parent, owner: chain[i + 2] };
+  }
+  return "select statements inside a function";
 }
 
 /**
@@ -262,26 +327,35 @@ export async function planExtract(view: EditorView): Promise<ExtractPlan | strin
   const support = await structure.support(ctx.language).catch(() => null);
   if (!support?.tree) return "Extract Method needs the language server here";
 
-  const at = await structure.expressionAt(ctx.doc, offsetsToRange(doc, sel.from, sel.to));
-  if (at.hasError) return "the selection contains syntax errors";
-  if (at.functionBoundary) return "the selection crosses a lambda or a nested function";
-  if (!at.block || !at.statement) return "select statements inside a function";
+  const where = await locateBlock(p, sel);
+  if (typeof where === "string") return where;
+  const { statement, block, owner } = where;
   // `statement` is the block's direct child holding the selection's start. A
   // selection that starts inside a construct (`except`, `else`, a `case` body)
   // begins before that statement, and would extract half a clause.
-  if (doc.lineAt(spanOf(doc, at.statement).from).from !== sel.from) {
+  if (doc.lineAt(spanOf(doc, statement).from).from !== doc.lineAt(sel.from).from) {
     return "the selection must start at a statement of the enclosing block";
+  }
+  if (statement.hasError) return "the selection contains syntax errors";
+  if (!owner) return "select statements inside a function";
+  if (!/^(function_definition|decorated_definition)$/.test(owner.kind)) {
+    return "select statements inside a function";
   }
 
   const range = wholeStatements(doc, sel.from, sel.to);
   if (typeof range === "string") return range;
   const { from, to, indent } = range;
 
-  const fn = await enclosingFunction(p, at);
-  if (!fn) return "select statements inside a function";
-  const fnSpan = span(doc, fn);
+  // A syntax error anywhere in the selection makes every later answer a guess.
+  const broken = await structure.syntaxErrors(ctx.doc).catch(() => null);
+  if (broken?.errors.some((e) => spanOf(doc, e).to > from && spanOf(doc, e).from < to)) {
+    return "the selection contains syntax errors";
+  }
 
-  const flow = await analyze(p, from, to);
+  const fnSpan = spanOf(doc, owner);
+  void block;
+
+  const flow = await analyze(p, from, to, doc.sliceString(fnSpan.from, fnSpan.to));
   if (typeof flow === "string") return flow;
 
   return {

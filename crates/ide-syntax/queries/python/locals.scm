@@ -51,6 +51,16 @@
   (dictionary_splat_pattern
     (identifier) @local.definition.parameter))
 
+; Annotated splats: `*args: int`, `**kwargs: str`. The annotation wraps the
+; splat in a `typed_parameter`, so the two rules above do not match.
+(typed_parameter
+  (list_splat_pattern
+    (identifier) @local.definition.parameter))
+
+(typed_parameter
+  (dictionary_splat_pattern
+    (identifier) @local.definition.parameter))
+
 ; Function defines function and scope
 ((function_definition
   name: (identifier) @local.definition.function) @local.scope
