@@ -1,0 +1,281 @@
+# POC 总报告：在 OpenIDEA 架构上做 Python 重构
+
+> 起始问题：在 Rust + tree-sitter 的架构上重做 PyCharm 级重构，值不值得投 1.5 人年？
+>
+> 本报告的全部数字都来自实测：真 tree-sitter、真语言服务器、真 IPC、真 CPython 标准库代码。
+> 基线：OpenIDEA v0.1.39（提交 `302ff89`）。
+
+---
+
+## 一、结论
+
+**架构可行，成本比预期低一个数量级，但覆盖度需要一档一档加。**
+
+| 重构 | 原估算 | 实际投入 | 覆盖率（真实代码） |
+|---|---|---|---|
+| Extract Method | 4–6 人月 | **约 1 天** | 91.7% 的合理选区 |
+| Inline Variable | 1–2 人月 | 约半天 | 未批量测 |
+| Inline Method | （含在上项） | 约半天 | 未批量测 |
+| Change Signature | 3–4 人月 | **约 1 天**（两档） | 未批量测 |
+| Move 类/模块 | 2–3 月 | **约 1 天**（同包一档） | 未批量测 |
+
+差距的来源**不是实现得更聪明**，而是 v1 的拒绝面很宽：只做能从语法证明正确的变换，
+其余明确拒绝并说明原因。真实的工程含义是：
+
+> **这个架构能承载重构，但"PyCharm 级"要靠一档一档往上加，每加一档要重新验证一次正确性。**
+
+---
+
+## 二、做了什么
+
+### 2.1 五个重构（全部真机验证）
+
+| 重构 | 能力 | 触发器 |
+|---|---|---|
+| **Extract Method** | 提取语句块为方法；自由变量→参数；一个或多个输出→返回值/元组 | `Ctrl+Alt+M` |
+| **Inline Variable** | 局部变量内联到使用处；拒绝副作用重复、拒绝跨依赖变更 | `Ctrl+Alt+N` |
+| **Inline Method** | `return <expr>` 型函数内联；参数按实参代入，含默认值 | `Ctrl+Alt+N`（光标在调用上） |
+| **Change Signature** | 追加带默认值参数；**跨文件**重命名参数（跟随关键字调用点） | `Ctrl+F6` |
+| **Move** | 同包内移动顶层类/函数，重写 `from … import …`，随行 import | `F6` |
+
+### 2.2 支撑改动
+
+| 改动 | 位置 | 作用 |
+|---|---|---|
+| `syntax_locals_in_range` | `crates/ide-syntax` + host + Tauri | 一次请求回答选区内所有名字，性能提升 21–36× |
+| `IdentifierOccurrence.role` | `crates/ide-syntax` | 区分关键字实参 / 形参 / 其他，改名必需 |
+| `locals.scm` 补 2 条规则 | `crates/ide-syntax/queries/python` | 覆盖 `*args: int` / `**kwargs: str` |
+| `analysis.ts` | 前端 | 六个重构共用的偏移/语句/写入判定原语 |
+
+### 2.3 代码规模
+
+```
+新增实现    2,117 行（6 个文件）
+新增测试    3,249 行（8 个文件）
+相对基线    +7,272 / -7 行，37 个文件
+```
+
+---
+
+## 三、实测数据
+
+### 3.1 Extract Method 批量验证（CPython 标准库）
+
+选区来源：用 Python 的 `ast` 枚举 8 个标准库模块里每个函数体的「连续 1–3 条语句」组合
+——这是人类会高亮的范围，不是凭空构造的。
+
+```
+选区总数   306          （8 文件 × 每文件采样 40）
+成功       232   75.8%
+拒绝        74
+抛异常       0
+打开失败     0
+```
+
+**排除含 `return`/`yield`/`await` 的选区**（用户不会那样选）：
+
+```
+232 / (306 - 53) = 91.7%
+```
+
+#### 拒绝原因分布
+
+| 次数 | 原因 | 性质 |
+|---|---|---|
+| 53 | 含 `return` / `yield` / `await` | 语义必然（抽出的方法无法 return 给调用方） |
+| 19 | 给声明在外部的变量赋值 | **唯一的真实边界**：需要跨语句数据流改写 |
+| 2 | `global` / `nonlocal` | 查询缺口，可补 `locals.scm` |
+| 0 | 写多个内部变量 | 已支持（返回元组） |
+| 0 | 参数未解析 | 已修复（曾误拒 27 次） |
+
+#### 四轮改进
+
+| 改动 | 成功 | 成功率 | 排除含 return |
+|---|---|---|---|
+| 初版 | 191/306 | 62.4% | 74.6% |
+| 修 docstring / member 误拒 | 216/306 | 70.6% | 85.7% |
+| 加批量查询（纯加速） | 218/306 | 71.2% | 86.2% |
+| 支持多输出 | **232/306** | **75.8%** | **91.7%** |
+
+### 3.2 性能
+
+`syntax_locals_in_range` 之前，Extract Method 每个变量名一次 IPC（约 13 ms）。
+加批量命令后，同一份代码、同一台机器：
+
+| 语句数 | 优化前 | 优化后 | 提升 |
+|---|---|---|---|
+| 4 | 143 ms | 40 ms | 3.6× |
+| 8 | 188 ms | 9 ms | **21×** |
+| 18 | 356 ms | 10 ms | **36×** |
+| 31 | 569 ms | 53 ms | **11×** |
+
+**优化前后判定结果完全一致**（同原因分布），是纯加速。
+
+### 3.3 真机验证记录
+
+| 重构 | 验证内容 | 结果 |
+|---|---|---|
+| Extract Method | `models.py` 第 35–36 行提取 | 参数 `[title, priority, due, tags, self]`、返回 `task`、类内同级缩进 |
+| Inline Variable | `factor = rate * 2` 两处使用 | 两处替换为 `(rate * 2)`，声明行删除 |
+| Inline Method | 三处调用 | `(a + 1) * 2` / `b + 1`（默认值）/ `a`；`caller(3,10) == 26` 与手算一致 |
+| Change Signature | 追加 + 跨文件改名 | 位置调用未改，关键字调用跟随；`local/other/positional` 三种调用都返回正确值 |
+| Move | 三文件原子移动 | `Widget` 迁到 `extra`，`build('w')` 正常，`Other` 留在原处 |
+
+每项都额外验证：
+- 生成文件被**真 CPython 执行**通过（不只是 `ast.parse`）
+- Problems 面板 9–18 秒内 **0 错误 0 警告**
+- 一次 `Ctrl+Z` 完全还原（跨文件时多文件一起还原）
+
+---
+
+## 四、真机暴露的 8 个缺陷
+
+**这些全部无法靠单元测试发现**，因为 mock 的语法树不会暴露真实结构。
+
+| # | 缺陷 | 性质 | 后果 |
+|---|---|---|---|
+| 1 | `global x` 后的 `x = 1` 被报成局部定义 | 静默错码 | 生成读未定义名字的方法 |
+| 2 | 选区从 `except` 中间开始 | 生成废码 | 抽出半个子句，`SyntaxError` |
+| 3 | `*rest = pair` 的 `rest` 查不到 | 静默丢值 | `UnboundLocalError` |
+| 4 | `expressionAt` 对语句块返回整个 `def` | 架构性 | 定位语句用错 API |
+| 5 | `self` 被当关键字丢弃 | 静默丢参 | `NameError` |
+| 6 | `tags` 首次出现在关键字标签位置 | 静默丢参 | 同上 |
+| 7 | `*tags: str` 注解 splat 不解析 | 静默丢参 | 同上 |
+| 8 | `self.x = 1` 里的 `self` 被判定为"被赋值" | 误拒 | 最常出现的自由变量被丢掉 |
+
+### 第 8 个的形状（`isWriteTarget`）
+
+| 形态 | 正确判定 |
+|---|---|
+| `x = 1` 的 `x` | 写入 |
+| `self.x = 1` 的 `self` | **读取** |
+| `a, b = x` 的 `a` | 写入 |
+| `a[0] = 2` 的 `a` | 读取 |
+| `for k in` 的 `k` | 写入 |
+| `with … as fh` 的 `fh` | 写入 |
+| `(y := g(x))` 的 `y` | 写入 |
+
+原实现爬整条祖先链，把 `self.x = 1` 的 `self`（在 `attribute/left` 下）判成写入。
+现在只看节点自身位置 + 穿过 pattern 容器。
+
+### 8 个里的 6 个是"静默错码"
+
+这是 POC 最重要的产出：**如果直接写实现不做真机验证，6 个缺陷会全部上线。**
+
+---
+
+## 五、架构判断
+
+### 5.1 什么被证实可用
+
+| 能力 | 结论 | 证据 |
+|---|---|---|
+| tree-sitter 做数据流分析 | **够用**，但需要 4 个补充手段 | 12 个真实用例 + 真机 |
+| 前端枚举选区标识符 | 需要 Rust 批量命令，**已解决** | `syntax_locals_in_range` |
+| IDE 生成的跨文件编辑 | 走 `WorkspaceEdit` 完全可行 | Move / 改名都是三文件原子操作 |
+| 单步 undo | 可行（CodeMirror `ChangeSet` 或 workspace edit） | 全部重构实测 |
+| LSP 编辑后重新分析 | **不会假报错** | 5 个重构各自验证 9–18 秒 |
+| 拒绝优先的实现方式 | **可行且是必需的** | 91.7% 可用率，0 静默错误 |
+
+### 5.2 什么被证明是硬边界
+
+| 边界 | 为什么 | 工作量 |
+|---|---|---|
+| 给外部变量赋值（19 次拒绝） | 需要跨语句数据流改写：把调用前后的值搬进去 | 一个新的量级 |
+| `match`/`case` 模式绑定 | `locals.scm` 无规则 | 小（补查询） |
+| `global`/`nonlocal`（2 次） | 同上 | 小 |
+| 跨包 Move | 相对导入深度重算 + `__init__.py` | 中 |
+| `<module>.<name>` 引用 | 要连 `import <module>` 一起判断清理 | 中 |
+| 内联有语句体的函数 | 要引入临时变量并避免撞名 | 大 |
+| 移动方法到另一个类 | 要处理 `self` 绑定 | 大 |
+
+### 5.3 原判断被修正的地方
+
+| 原判断 | 实际 |
+|---|---|
+| "Extract Variable 已经做完了，缺的是 Move/ChangeSignature/Extract" | 对，但 `introduce.ts` 的模式（纯文本 + `nodeAt`）能直接复用 |
+| "符号解析这层 Rust 里造不出来，得引 `ruff_python_semantic`" | **不一定**：tree-sitter + `locals.scm` 撑住了 91.7% 的场景 |
+| "workspace edit 编排只处理 LSP 返回的编辑" | 错。`refactor_file_move_text_edits` 证明 IDE 生成的也能走 |
+| "Extract Method 4–6 人月" | 约 1 天（v1 档位） |
+| "Move 类/模块 2–3 月" | 约 1 天（同包档位） |
+
+---
+
+## 六、方法论收获（可复用到任何重构）
+
+### 6.1 拒绝清单必须写成文档并被测试守护
+
+5 份文档，共 **89 条拒绝消息**。实现里的 **71 条固定/模板消息全部由测试逐条断言**
+（固定 71 = 16+11+23+11+10，模板另计 34 条），文档里另有多出的示例与说明。
+我故意改坏过 4 次文档，每次都立即失败。
+
+```
+docs/extract-method-python.md
+docs/inline-variable-python.md
+docs/inline-method-python.md
+docs/change-signature-python.md
+docs/move-python.md
+```
+
+**价值**：代码改了文案却忘了改文档 = 测试失败。文档不会变成谎言。
+
+### 6.2 先用真代码量出可用率，再决定做不做
+
+Extract Method 的 306 个真实选区跑下来，才发现两个"查询缺口"型误拒
+（docstring 词、成员名），一次修掉把成功率从 62% 提到 71%。
+
+**如果不量产，"参数未解析"这条会一直被当成稀有情况。**
+
+### 6.3 真机验证不可替代
+
+8 个缺陷里 6 个是静默错码，单元测试的假语法树不会暴露。
+建议的固定动作：
+
+1. 造一个临时 fixture（`.gitignore` 掉，`fixtures/**/_*probe.py`）
+2. 用只读 API 探测真实语法树结构
+3. 实现后用**真解释器执行**生成结果，不只是解析
+4. 检查 Problems 面板
+5. 测一次 `Ctrl+Z`
+
+### 6.4 一条硬规矩
+
+**探测只用只读 API；任何 `dispatch` 前断言目标文件路径。**
+
+这条是事故换来的：我在"只读探测"里用了 `dispatch` 替换整篇文档，
+而编辑器当时打开的是 `Python311/Lib/ast.py`，自动保存把它写坏了
+（`__future__.py` 也一起）。已从官方源恢复并全量校验。
+
+---
+
+## 七、下一步建议
+
+按性价比排序：
+
+| 优先级 | 事项 | 理由 |
+|---|---|---|
+| 1 | **把 5 个重构在真实项目上批量验证**（不只 Extract Method） | 只有 Extract Method 有 91.7% 这个数字，其余四个都没有 |
+| 2 | 补 `locals.scm` 的 `global`/`match` 规则 | 1 小时，消掉 2 次拒绝 |
+| 3 | Change Signature 删除参数 | `role` 已就位，是下一个最自然的档位 |
+| 4 | 跨包 Move | 相对导入重算是纯文本逻辑，可测 |
+| 5 | Inline 有语句体的函数 | 需要临时变量引入，属新量级 |
+
+**不建议现在做**：给外部变量赋值的改写（19 次拒绝）。它需要真正的数据流分析，
+投入产出比明显低于前四项。
+
+---
+
+## 八、附：全部证据文件
+
+| 内容 | 位置 |
+|---|---|
+| Extract Method 拒绝清单 | `docs/extract-method-python.md` |
+| Extract Method 批量验证 | `docs/extract-method-batch.md` |
+| Inline Variable 拒绝清单 | `docs/inline-variable-python.md` |
+| Inline Method 拒绝清单 | `docs/inline-method-python.md` |
+| Change Signature 拒绝清单 | `docs/change-signature-python.md` |
+| Move 拒绝清单 | `docs/move-python.md` |
+| 语法树探针（Rust） | `crates/ide-syntax/src/tests/probe_dataflow.rs`、`probe_poc.rs` |
+| 生成代码语法校验 | `src/editor/refactor/pocSyntax.test.ts` |
+| 文档防漂移测试 | `src/editor/refactor/refusalDocs.test.ts` |
+| 批量验证脚本 | `C:/D/temp/openpycharm/selections.py`、`batch.mjs` |
+| 驱动脚本 | `C:/D/temp/openpycharm/drive.mjs` |
