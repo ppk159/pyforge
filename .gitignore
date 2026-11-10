@@ -43,3 +43,6 @@ CLAUDE.local.md
 
 # Local reference screenshots
 pycharm-screenshots/
+
+# Scratch fixture files used while driving the app by hand; never committed.
+fixtures/**/_*probe.py

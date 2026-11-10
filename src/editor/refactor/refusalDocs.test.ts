@@ -1,7 +1,7 @@
 /**
- * The refusal docs (`docs/extract-method-python.md`, `docs/inline-python.md`)
- * quote every message the implementation can return. A message that changes
- * without the doc failing here means the doc is lying to the reader.
+ * The refusal docs under `docs/` quote every message the implementation can
+ * return. A message that changes without the doc failing here means the doc is
+ * lying to the reader.
  *
  * Fixed messages are matched verbatim. Templated ones are documented with their
  * interpolations filled in (`'x' is reassigned; …`), so the surrounding text is
@@ -18,7 +18,8 @@ interface Case {
 
 const CASES: Case[] = [
   { source: "src/editor/refactor/extractMethod.ts", doc: "docs/extract-method-python.md" },
-  { source: "src/editor/refactor/inline.ts", doc: "docs/inline-python.md" },
+  { source: "src/editor/refactor/inline.ts", doc: "docs/inline-variable-python.md" },
+  { source: "src/editor/refactor/inlineFunction.ts", doc: "docs/inline-method-python.md" },
 ];
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");

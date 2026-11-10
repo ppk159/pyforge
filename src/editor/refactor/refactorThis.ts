@@ -32,6 +32,7 @@ import {
 import { introduceFallback, type IntroduceKind } from "./introduce";
 import { extractMethodFallback } from "./extractMethod";
 import { inlineFallback } from "./inline";
+import { inlineFunctionFallback, isCallUnderCaret } from "./inlineFunction";
 import { languageName, queryRefactorActions } from "./query";
 import {
   EXPRESSION_REFACTORINGS,
@@ -118,9 +119,19 @@ const INTRODUCE: Partial<Record<RefactoringId, IntroduceKind>> = {
 const SYNTAX_REFACTORING_LANGUAGES = new Set(["python"]);
 
 /** Refactorings that fall back to a syntax-only implementation. */
+/**
+ * IDEA's Inline is one action that inlines whatever the caret names: a call
+ * becomes its body, a variable becomes its initializer. The syntax-only path
+ * decides by what is under the caret.
+ */
+async function inlineAnything(view: EditorView): Promise<boolean> {
+  if (await isCallUnderCaret(view)) return inlineFunctionFallback(view);
+  return inlineFallback(view);
+}
+
 const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {
   extractMethod: extractMethodFallback,
-  inline: inlineFallback,
+  inline: inlineAnything,
 };
 
 /** First error diagnostic on the selected lines (servers offer nothing over broken code). */
