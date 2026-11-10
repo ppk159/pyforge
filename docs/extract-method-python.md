@@ -90,7 +90,6 @@ match value:            ← 拒绝
 | 场景 | 拒绝原因 |
 |---|---|
 | 选区内给**外部声明的变量**赋值 | `the selection assigns 'x', which is declared outside it` |
-| 选区内写**多个**这样的变量 | `the selection assigns 2 variables that are used afterwards (a, b)` |
 | 某名字查不到，但外层函数**签名**里有它 | `'x' is local to this function but the syntax service cannot resolve it here` |
 | 某名字在作用域里声明不止一次 | `'x' is declared more than once here` |
 
@@ -140,6 +139,7 @@ def add(self, title: str, *tags: str) -> Task:
 | 没有任何外部依赖的语句块 | 无参数，无返回值 |
 | 读外层局部变量、参数或 `self` | 变成参数，**按首次使用顺序** |
 | 在选区内定义、选区外使用的**一个**变量 | 作为返回值 |
+| 在选区内定义、选区外使用的**多个**变量 | 返回元组，调用处一次解包：`a, b = f()` |
 | 在选区内定义、只在选区内用掉的变量 | 无返回值 |
 | 嵌套函数内提取 | 新方法插在同一层级 |
 | 方法内提取 | 新方法成为**同级方法**（缩进对齐外层 `def`） |
@@ -170,12 +170,41 @@ def compute_task(title, priority, due, tags, self):          # 新方法，同�
 
 | 细节 | 行为 |
 |---|---|
-| 命名 | 有返回值 → `compute_<输出名>`，否则 `extracted`；生成后弹改名框 |
+| 命名 | 恰好一个返回值 → `compute_<输出名>`，否则 `extracted`；生成后弹改名框 |
 | 改名 | 先 undo，再用新名字重跑整次重构，因此**仍是一步 undo** |
 | undo | 一次 `Ctrl+Z` 完全还原（实测：62 行 → 58 行） |
 | 缩进 | 新方法体 = 外层函数缩进 + 4 |
 | 编辑之后 | 语言服务器重新分析，Problems 面板**保持为空**（实测：18 秒，0 错误） |
 | 语言 | 只支持 Python；其他语言需要语言服务器 |
+
+### 多个输出
+
+选中区定义了好几个变量、而选区外还要用到时，新方法返回元组，调用处一次解包：
+
+```python
+# 选中
+def f(a):
+    x = a + 1
+    y = a + 2
+    return x + y
+
+# 结果
+def f(a):
+    x, y = extracted(a)
+    return x + y
+
+def extracted(a):
+    x = a + 1
+    y = a + 2
+    return x, y
+```
+
+两个约束：
+
+- **顺序是选区内的声明顺序**，因为调用处的解包依赖它。
+- **只对声明在选区内的变量有效**。给声明在外部的变量赋值仍然拒绝：那无法通过返回值回写（见下一节）。
+
+多个输出时命名不再用 `compute_<输出名>`（没有唯一输出可用），而是 `extracted`。
 
 ## 七、作用域查询的缺口
 

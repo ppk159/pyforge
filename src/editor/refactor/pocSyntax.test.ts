@@ -240,7 +240,7 @@ describe("generated Python compiles", () => {
       bodyIndentInner: c.indent,
       insertAt: after.to,
       params: c.params,
-      output: c.output,
+      outputs: c.output ? [c.output] : [],
     };
     const out = apply(c.src, plan, "extracted");
     const result = compiles(out, c.label);

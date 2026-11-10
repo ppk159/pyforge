@@ -83,8 +83,12 @@ export interface ExtractPlan {
   insertAt: number;
   /** Free variables, first use first. */
   params: string[];
-  /** The one value written for the caller, if any. */
-  output: string | null;
+  /**
+   * The values the caller needs back, in the order they are declared in the
+   * selection. One value is returned as is; several make the method return a
+   * tuple, which the call unpacks.
+   */
+  outputs: string[];
 }
 
 interface Prepared {
@@ -145,7 +149,7 @@ const IMPLICIT_PARAMS = new Set(["self", "cls"]);
 
 interface Flow {
   params: string[];
-  output: string | null;
+  outputs: string[];
 }
 
 /**
@@ -196,6 +200,8 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
     // Declared outside and read here: the extracted method must receive it.
     for (const r of refsInside) {
       if (await isWritten(p.ctx, offsetsToRange(p.doc, r.from, r.to))) {
+        // A value the caller needs back is returned; but a parameter or an outer
+        // local cannot be written through the call, so it is refused.
         return `the selection assigns '${name}', which is declared outside it`;
       }
     }
@@ -203,10 +209,10 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
     params.push({ name, at: at.line * 100_000 + at.col });
   }
   params.sort((a, b) => a.at - b.at);
-  if (written.length > 1) {
-    return `the selection assigns ${written.length} variables that are used afterwards (${written.join(", ")})`;
-  }
-  return { params: params.map((x) => x.name), output: written[0] ?? null };
+  // The outputs are returned in declaration order, which is the order the caller
+  // will unpack them in.
+  const outputs = [...written];
+  return { params: params.map((x) => x.name), outputs };
 }
 
 /**
@@ -278,7 +284,7 @@ export async function planExtract(view: EditorView): Promise<ExtractPlan | strin
     bodyIndentInner: `${indentOf(doc, fnSpan.from)}    `,
     insertAt: doc.lineAt(fnSpan.to).to,
     params: flow.params,
-    output: flow.output,
+    outputs: flow.outputs,
   };
 }
 
@@ -288,14 +294,18 @@ export function declarationText(plan: ExtractPlan, name: string): string {
     .split("\n")
     .map((line) => (blank(line) ? "" : plan.bodyIndentInner + line.slice(plan.bodyIndent.length)))
     .join("\n");
-  const tail = plan.output ? `\n${plan.bodyIndentInner}return ${plan.output}` : "";
+  let tail = "";
+  if (plan.outputs.length === 1) tail = `\n${plan.bodyIndentInner}return ${plan.outputs[0]}`;
+  else if (plan.outputs.length > 1) tail = `\n${plan.bodyIndentInner}return ${plan.outputs.join(", ")}`;
   return `${plan.defIndent}def ${name}(${plan.params.join(", ")}):\n${body}${tail}`;
 }
 
 /** The call that replaces the selection. */
 export function callText(plan: ExtractPlan, name: string): string {
   const call = `${name}(${plan.params.join(", ")})`;
-  return plan.output ? `${plan.bodyIndent}${plan.output} = ${call}` : `${plan.bodyIndent}${call}`;
+  if (!plan.outputs.length) return `${plan.bodyIndent}${call}`;
+  // Several values come back as a tuple, which the call unpacks in one statement.
+  return `${plan.bodyIndent}${plan.outputs.join(", ")} = ${call}`;
 }
 
 type Builder = (name: string, state: EditorState) => ChangeSet;
@@ -393,12 +403,13 @@ async function suggestionsFor(p: Prepared, plan: ExtractPlan): Promise<string[]>
     return found.some((o) => !o.qualified);
   };
   // IDEA names the method after what it produces; the body of an extraction is
-  // statements, so `suggestNames` has little to read. Fall back to IDEA's own
-  // `extracted` when nothing better comes out.
+  // statements, so `suggestNames` has little to read. A single output names the
+  // method after itself; with several there is no one name to use.
   const style = nameStyle(p.ctx.language);
-  const fromOutput = plan.output && (style === "snake" ? `compute_${plan.output}` : `compute${cap(plan.output)}`);
-  const raw = fromOutput ?? (style === "snake" ? "extracted" : "extracted");
-  return uniqueNames([raw, style === "snake" ? "extracted" : "extracted"], taken);
+  const only = plan.outputs.length === 1 ? plan.outputs[0]! : null;
+  const fromOutput = only && (style === "snake" ? `compute_${only}` : `compute${cap(only)}`);
+  const raw = fromOutput ?? "extracted";
+  return uniqueNames([raw, "extracted"], taken);
 }
 
 /**

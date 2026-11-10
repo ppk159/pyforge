@@ -485,3 +485,19 @@ fn locals_in_range_skips_docstring_words() {
     let got = service().locals_in_range(&snap, Pos::new(1, 0), Pos::new(1, 26), &none()).expect("locals_in_range");
     assert!(got.names.iter().all(|n| n.name != "size"), "{:?}", got.names);
 }
+
+/// Names come back in first-occurrence order: a caller unpacks a tuple return in
+/// the order the variables are declared, so the order is part of the contract.
+#[test]
+fn locals_in_range_keeps_document_order() {
+    let src = "def f(rows):\n    first = rows[0]\n    second = rows[1]\n    return first, second\n";
+    let l = lang("python");
+    let snap = Snapshot::text(&l, src);
+    let got = service().locals_in_range(&snap, Pos::new(1, 0), Pos::new(3, 26), &none()).expect("locals_in_range");
+    let names: Vec<&str> = got.names.iter().map(|n| n.name.as_str()).collect();
+    let first = names.iter().position(|n| *n == "first").expect("first");
+    let second = names.iter().position(|n| *n == "second").expect("second");
+    assert!(first < second, "{names:?}");
+    // `rows` is the parameter and comes first of all: it appears on line 1.
+    assert_eq!(names.first().copied(), Some("rows"), "{names:?}");
+}

@@ -340,7 +340,7 @@ describe("declarationText / callText", () => {
     bodyIndentInner: "    ",
     insertAt: 0,
     params: ["order", "total"],
-    output: "total",
+    outputs: ["total"],
   };
 
   it("re-indents the body and appends the return", () => {
@@ -354,7 +354,7 @@ describe("declarationText / callText", () => {
   });
 
   it("omits the return and the assignment for a void extraction", () => {
-    const voided = { ...plan, output: null, params: [] };
+    const voided = { ...plan, outputs: [], params: [] };
     expect(declarationText(voided, "log_it")).toBe("def log_it():\n    total *= 0.9\n    total *= 1.05");
     expect(callText(voided, "log_it")).toBe("    log_it()");
   });
@@ -411,7 +411,7 @@ describe("planExtract", () => {
     expect(typeof plan).not.toBe("string");
     if (typeof plan === "string") return;
     expect(plan.params).toEqual(["order"]);
-    expect(plan.output).toBe("rate");
+    expect(plan.outputs).toEqual(["rate"]);
     expect(plan.bodyIndent).toBe("    ");
     expect(plan.defIndent).toBe("");
     expect(plan.insertAt).toBe(SRC.indexOf("    return total") + "    return total".length);
@@ -464,7 +464,7 @@ describe("planExtract", () => {
     expect(typeof plan).not.toBe("string");
     if (typeof plan === "string") return;
     expect(plan.params).toEqual(["title", "self"]);
-    expect(plan.output).toBe("task");
+    expect(plan.outputs).toEqual(["task"]);
     expect(plan.defIndent).toBe("    ");
   });
 
@@ -718,7 +718,7 @@ describe("planExtract", () => {
     expect(await planExtract(v)).toBe("'order' is declared more than once here");
   });
 
-  it("refuses two output variables", async () => {
+  it("returns every output the caller needs, in declaration order", async () => {
     const src = ["def f(a):", "    x = a + 1", "    y = a + 2", "    return x + y", ""].join("\n");
     const from = src.indexOf("    x = a + 1");
     const to = src.indexOf("    return x + y");
@@ -737,7 +737,9 @@ describe("planExtract", () => {
     const yd = src.indexOf("y = a + 2");
     local("y", { from: yd, to: yd + 1 }, [{ from: src.indexOf("x + y") + 4, to: src.indexOf("x + y") + 5 }]);
     const v = editor(src, { anchor: from, head: to });
-    expect(await planExtract(v)).toBe("the selection assigns 2 variables that are used afterwards (x, y)");
+    const plan = await planExtract(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.outputs).toEqual(["x", "y"]);
   });
 });
 
@@ -759,6 +761,37 @@ describe("extractMethodFallback", () => {
 
     expect(undo(v)).toBe(true);
     expect(v.state.doc.toString()).toBe(SRC);
+  });
+
+  it("unpacks several outputs in one call statement", async () => {
+    const src = ["def f(a):", "    x = a + 1", "    y = a + 2", "    return x + y", ""].join("\n");
+    const from = src.indexOf("    x = a + 1");
+    const to = src.indexOf("    return x + y");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", src.slice(from, to), 0, "body"],
+      ["assignment", "x = a + 1"],
+      ["assignment", "y = a + 2"],
+    ]);
+    const param = src.indexOf("(a)") + 1;
+    local("a", { from: param, to: param + 1 }, [{ from: src.indexOf("a + 1"), to: src.indexOf("a + 1") + 1 }]);
+    const xd = src.indexOf("x = a + 1");
+    local("x", { from: xd, to: xd + 1 }, [{ from: src.indexOf("x + y"), to: src.indexOf("x + y") + 1 }]);
+    const yd = src.indexOf("y = a + 2");
+    local("y", { from: yd, to: yd + 1 }, [{ from: src.indexOf("x + y") + 4, to: src.indexOf("x + y") + 5 }]);
+    const v = editor(src, { anchor: from, head: to });
+    expect(await extractMethodFallback(v)).toBe(true);
+
+    const out = v.state.doc.toString();
+    // The call unpacks the tuple the method returns; the method returns both.
+    expect(out).toContain("    x, y = extracted(a)");
+    expect(out).toContain("    return x, y");
+    useLspPopup.setState({ popup: null });
+    expect(undo(v)).toBe(true);
+    expect(v.state.doc.toString()).toBe(src);
   });
 });
 

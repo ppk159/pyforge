@@ -537,6 +537,10 @@ pub(crate) fn locals_in_range(cx: &Ctx, from: Pos, to: Pos) -> StructureResult<R
         }
     }
     out.occurrences = occurrences.len() as u32;
+    // The walk is depth-first over a stack, so its order is not document order;
+    // callers rely on first-occurrence order (a caller unpacks a tuple return in
+    // the order the variables are declared), so sort explicitly.
+    occurrences.sort_by_key(|(_, at)| *at);
 
     for (name, _) in &occurrences {
         if out.names.len() >= MAX_RANGE_NAMES {
