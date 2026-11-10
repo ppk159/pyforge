@@ -34,6 +34,7 @@ import { extractMethodFallback } from "./extractMethod";
 import { inlineFallback } from "./inline";
 import { inlineFunctionFallback, isCallUnderCaret } from "./inlineFunction";
 import { appendParameterFallback, renameParameterFallback } from "./changeSignature";
+import { moveFallback, packageOf } from "./move";
 import { chooseItem, promptInput } from "@/workbench/inputDialogs";
 import { languageName, queryRefactorActions } from "./query";
 import {
@@ -185,10 +186,41 @@ async function changeSignatureHere(view: EditorView): Promise<boolean> {
   return renameParameterFallback(view, from, to);
 }
 
+/**
+ * Asks for the destination module of the same package and moves the symbol there.
+ *
+ * IDEA shows a tree of the whole project. Without a language server only a move
+ * inside one package keeps every relative import valid, so the dialog asks for a
+ * module name in that package.
+ */
+async function moveHere(view: EditorView): Promise<boolean> {
+  const ctx = docOf(view);
+  if (!ctx) return false;
+  const sourcePath = ctx.path.replace(/\\/g, "/");
+  const dir = packageOf(sourcePath);
+  const target = await promptInput({
+    title: "Move",
+    label: "Destination module in this package",
+    placeholder: "extra (or extra.py)",
+    okLabel: "Move",
+    hint: tx`Only a move inside one package is supported without the language server: relative imports keep their depth, and \`from … import …\` is rewritten.`,
+    validate: (value) => {
+      const name = value.trim().replace(/\.py$/, "");
+      if (!/^[A-Za-z_]\w*$/.test(name)) return `'${value}' is not a valid module name`;
+      if (name === "__init__") return "Moving into __init__.py is not supported";
+      return null;
+    },
+  });
+  if (!target) return false;
+  const module = target.trim().replace(/\.py$/, "");
+  return moveFallback(view, { path: `${dir}/${module}.py` });
+}
+
 const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {
   changeSignature: changeSignatureHere,
   extractMethod: extractMethodFallback,
   inline: inlineAnything,
+  move: moveHere,
 };
 
 /** First error diagnostic on the selected lines (servers offer nothing over broken code). */

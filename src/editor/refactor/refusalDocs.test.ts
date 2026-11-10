@@ -21,6 +21,7 @@ const CASES: Case[] = [
   { source: "src/editor/refactor/inline.ts", doc: "docs/inline-variable-python.md" },
   { source: "src/editor/refactor/inlineFunction.ts", doc: "docs/inline-method-python.md" },
   { source: "src/editor/refactor/changeSignature.ts", doc: "docs/change-signature-python.md" },
+  { source: "src/editor/refactor/move.ts", doc: "docs/move-python.md" },
 ];
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
