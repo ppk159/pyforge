@@ -67,21 +67,31 @@ export async function chainAt(ctx: EditorDocContext, range: Range): Promise<Synt
   return n ? [n.node, ...n.ancestors] : null;
 }
 
+/** Containers a write target can sit inside: `a, b = …`, `[a, b] = …`, `*rest` . */
+const TARGET_CONTAINER = /^(pattern_list|tuple_pattern|list_pattern|list_splat_pattern)$/;
+
 /**
  * Whether `range` is written rather than read: an assignment target, a `for`
  * target, an `as` binding or a walrus target.
+ *
+ * Only the node's own position decides. Walking further up the ancestors would
+ * read `self` in `self.x = 1` as assigned (it sits under `attribute/left`), and
+ * `self` is the most common free variable in Python.
  */
 export async function isWriteTarget(ctx: EditorDocContext, range: Range): Promise<boolean> {
   const chain = await chainAt(ctx, range);
   if (!chain) return false;
-  for (let i = 0; i + 1 < chain.length; i++) {
-    const node = chain[i]!;
-    const parent = chain[i + 1]!;
-    if (node.field === "left" && /assignment|for_statement|for_in_clause/.test(parent.kind)) return true;
-    if (node.field === "alias" && /as_pattern/.test(parent.kind)) return true;
-    if (node.field !== "value" && /named_expression/.test(parent.kind)) return true;
-  }
-  return false;
+  let i = 0;
+  // Step out through the containers a target can be nested in, never further.
+  while (i + 1 < chain.length && TARGET_CONTAINER.test(chain[i + 1]!.kind)) i++;
+  const node = chain[i]!;
+  const parent = chain[i + 1];
+  if (!parent) return false;
+  if (node.field === "left") return /^(assignment|augmented_assignment|for_statement|for_in_clause)$/.test(parent.kind);
+  // `with open() as fh`: the name sits in an `as_pattern_target` under `as_pattern`.
+  if (parent.kind === "as_pattern_target" && parent.field === "alias") return true;
+  // `if (y := …)`: the target is the `name` field of a named_expression.
+  return node.field === "name" && parent.kind === "named_expression";
 }
 
 /** A statement of a block, and the declaration that owns the block. */

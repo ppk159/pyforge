@@ -23,6 +23,8 @@ const H = vi.hoisted(() => ({
   text: "",
   nodes: [] as FakeNode[],
   localAt: new Map<number, unknown>(),
+  /** Offsets the real query treats as a comment or string (`noIdentifier`). */
+  docOnly: new Set<number>(),
   blockSpan: null as { from: number; to: number } | null,
 }));
 
@@ -113,7 +115,12 @@ const structureMock = {
       const known = H.localAt.get(at);
       if (known && /^[A-Za-z_][A-Za-z0-9_]*/.exec(H.text.slice(at))?.[0] === name) return known as Locals;
     }
-    return { status: "noIdentifier" as const };
+    // What the real query answers for a word it cannot resolve. `noIdentifier`
+    // is reserved for comments and strings (see `H.docOnly`).
+    if (H.docOnly.has(off)) return { status: "noIdentifier" as const };
+    const word = name ?? "";
+    if (!word) return { status: "noIdentifier" as const };
+    return { status: "notLocal", name: word, range: rangeOf(off, off + word.length), reason: "unresolved" as const };
   }),
   structuralRanges: vi.fn(async () => {
     throw new Error("unused");
@@ -171,6 +178,7 @@ function local(name: string, def: { from: number; to: number }, refs: Array<{ fr
 
 beforeEach(() => {
   H.localAt = new Map();
+  H.docOnly = new Set();
   H.blockSpan = null;
   H.nodes = [];
   H.text = "";
@@ -458,6 +466,39 @@ describe("planExtract", () => {
     expect(plan.params).toEqual(["title", "tags"]);
   });
 
+  it("ignores a parameter name that only appears in a docstring", async () => {
+    // Measured on CPython's `_pyio.FileIO.read`: the selection is a docstring
+    // that mentions `size`, which is a parameter. All occurrences answer
+    // `noIdentifier`, so it is not a variable of the selection and must not be
+    // refused — the earlier code refused it as "cannot resolve".
+    const src = [
+      "def read(self, size=None):",
+      '    """Read size bytes. If size is negative, read until EOF."""',
+      "    return self.raw.read(size)",
+      "",
+    ].join("\n");
+    const from = src.indexOf('    """');
+    const to = src.indexOf("    return self.raw");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", src.slice(from, to), 0, "body"],
+      ["expression_statement", '    """Read size bytes. If size is negative, read until EOF."""'],
+      ["string", '"""Read size bytes. If size is negative, read until EOF."""'],
+    ]);
+    // Every `size` in the docstring is a word in a string, as the real query says.
+    for (let i = -1; (i = src.indexOf("size", i + 1)) >= 0;) {
+      if (i > to) break;
+      H.docOnly.add(i);
+    }
+    const v = editor(src, { anchor: from, head: to });
+    const plan = await planExtract(v);
+    // Nothing to extract from a bare string statement, but not because of `size`.
+    expect(plan).not.toBe("'size' is local to this function but the syntax service cannot resolve it here");
+  });
+
   it("refuses a name the scope query misses when the enclosing function binds it", async () => {
     // `tags` is a parameter but `locals` cannot resolve it: passing it would be
     // wrong to skip, because the new method would read an undefined name.
@@ -474,7 +515,8 @@ describe("planExtract", () => {
       ["block", src.slice(from, to), 0, "body"],
       ["assignment", "task = Task(title, tags=set(tags))"],
     ]);
-    // `locals` answers noIdentifier for `tags` (the query gap the POC found).
+    // `locals` answers `unresolved` for `tags` (the gap the POC probe found);
+    // the mock prefers a registered symbol, so leave `tags` unregistered.
     const titleParam2 = src.indexOf("(title") + 1;
     local("title", { from: titleParam2, to: titleParam2 + 5 }, [
       { from: src.indexOf("Task(title") + 5, to: src.indexOf("Task(title") + 10 },

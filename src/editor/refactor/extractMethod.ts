@@ -178,6 +178,8 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
   const written: string[] = [];
   for (const [name, positions] of names) {
     let symbol: LocalSymbol | null = null;
+    /** The name occurs at least once outside comments, strings and docstrings. */
+    let realIdentifier = false;
     for (const pos of positions) {
       let answer: Locals;
       try {
@@ -186,13 +188,20 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
       } catch {
         continue;
       }
-      // Comments and strings are not variables; a member position answers about
-      // the member, so the next occurrence of the same name is tried instead.
+      // `noIdentifier` means the word sits in a comment, a string or a
+      // docstring; `member` means it names an attribute (`self.locale_time`).
+      // Neither is a variable, so neither becomes a parameter nor a refusal.
+      if (answer.status === "notLocal" && answer.reason !== "member") realIdentifier = true;
+      if (answer.status === "local") realIdentifier = true;
+      // A member position answers about the member, so the next occurrence of the
+      // same name is tried instead.
       if (answer.status !== "local" || answer.symbol.name !== name) continue;
       symbol = answer.symbol;
       break;
     }
     if (!symbol) {
+      // A word that only ever appears in comments and strings is not a variable.
+      if (!realIdentifier) continue;
       // A module-level or builtin name stays in scope at the new declaration, so
       // passing it would be wrong; but a local the query missed must be refused.
       if (signatureBinds(ownerText, name)) {
