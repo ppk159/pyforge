@@ -33,6 +33,7 @@ import { introduceFallback, type IntroduceKind } from "./introduce";
 import { extractMethodFallback } from "./extractMethod";
 import { inlineFallback } from "./inline";
 import { inlineFunctionFallback, isCallUnderCaret } from "./inlineFunction";
+import { appendParameterFallback } from "./changeSignature";
 import { languageName, queryRefactorActions } from "./query";
 import {
   EXPRESSION_REFACTORINGS,
@@ -43,6 +44,8 @@ import {
 } from "./serverIntroduce";
 import { safeDelete } from "./safeDelete";
 import { startHierarchyRefactoring } from "./hierarchy";
+import { promptInput } from "@/workbench/inputDialogs";
+import { tx } from "@/platform/i18n";
 
 /** Languages whose server runs the class-hierarchy refactorings (the app-owned JDT extension). */
 const HIERARCHY_LANGUAGES = new Set(["java"]);
@@ -129,7 +132,34 @@ async function inlineAnything(view: EditorView): Promise<boolean> {
   return inlineFallback(view);
 }
 
+/**
+ * Asks for `name=default` and appends the parameter. IDEA's Change Signature
+ * dialog can add, remove and reorder; the syntax-only path adds one parameter
+ * with a default, which is the edit that keeps every call site valid.
+ */
+async function changeSignatureHere(view: EditorView): Promise<boolean> {
+  const spec = await promptInput({
+    title: "Change Signature",
+    label: "Parameter to append (name=default)",
+    placeholder: "cache=None",
+    okLabel: "Append",
+    hint: tx`Only a new parameter with a default is supported without the language server: existing calls keep binding the same parameters.`,
+    validate: (value) => {
+      const eq = value.indexOf("=");
+      if (eq <= 0) return "Write name=default";
+      const name = value.slice(0, eq).trim();
+      if (!/^[A-Za-z_]\w*$/.test(name)) return `'${name}' is not a valid parameter name`;
+      if (!value.slice(eq + 1).trim()) return "The parameter needs a default";
+      return null;
+    },
+  });
+  if (!spec) return false;
+  const eq = spec.indexOf("=");
+  return appendParameterFallback(view, spec.slice(0, eq).trim(), spec.slice(eq + 1).trim());
+}
+
 const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {
+  changeSignature: changeSignatureHere,
   extractMethod: extractMethodFallback,
   inline: inlineAnything,
 };
