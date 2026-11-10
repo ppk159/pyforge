@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { history, undo } from "@codemirror/commands";
-import type { ExpressionAt, Locals, NodeAt, Range, SyntaxNode } from "@/bindings";
+import type { ExpressionAt, Locals, NodeAt, Range, SyntaxErrors, SyntaxNode } from "@/bindings";
 
 // --- a hand-built syntax tree over the test document -------------------------
 //
@@ -15,6 +15,8 @@ interface FakeNode {
   to: number;
   field: string | null;
   parent: FakeNode | null;
+  /** The parser reported an error at or under this node. */
+  error?: boolean;
 }
 
 const H = vi.hoisted(() => ({
@@ -37,9 +39,9 @@ function toSyntax(n: FakeNode): SyntaxNode {
     range: rangeOf(n.from, n.to),
     field: n.field,
     named: true,
-    error: false,
+    error: !!n.error,
     missing: false,
-    hasError: false,
+    hasError: !!n.error,
   };
 }
 
@@ -88,7 +90,7 @@ const structureMock = {
     };
   }),
   nodeAt: vi.fn(async (_doc: number, range: Range) => nodeAt(range)),
-  syntaxErrors: vi.fn(async () => ({ errors: [], truncated: false })),
+  syntaxErrors: vi.fn(async (): Promise<SyntaxErrors> => ({ errors: [], truncated: false })),
   identifiers: vi.fn(async (_doc: number, name: string) => {
     const out: { range: Range; kind: string; qualified: boolean }[] = [];
     for (const m of H.text.matchAll(new RegExp(`(?<![\\w$])${name}(?![\\w$])`, "g"))) {
@@ -198,7 +200,9 @@ describe("wholeStatements", () => {
   it("refuses a partially selected first line", () => {
     const src = "def f():\n    a = 1\n    return a\n";
     const from = src.indexOf("a = 1") + 1;
-    expect(typeof wholeStatements(doc(src), from, src.indexOf("    return"))).toBe("string");
+    expect(wholeStatements(doc(src), from, src.indexOf("    return"))).toBe(
+      "the selection must start at a statement boundary",
+    );
   });
 
   it("refuses a selection that ends with a block head", () => {
@@ -246,6 +250,37 @@ describe("wholeStatements", () => {
   it("refuses module-level statements (no indent)", () => {
     const src = "a = 1\nb = 2\n";
     expect(wholeStatements(doc(src), 0, src.length)).toBe("the selection must be inside a function body");
+  });
+
+  it("refuses a partially selected last line", () => {
+    const src = "def f():\n    a = 1\n    b = 2\n    return a\n";
+    const from = src.indexOf("    a = 1");
+    // Stop in the middle of `b = 2`.
+    expect(wholeStatements(doc(src), from, src.indexOf("    b = 2") + 5)).toBe(
+      "the selection must end at a statement boundary",
+    );
+  });
+
+  it("refuses a blank selection", () => {
+    const src = "def f():\n\n    return 1\n";
+    expect(wholeStatements(doc(src), src.indexOf("\n") + 1, src.indexOf("\n") + 2)).toBe(
+      "the selection has no statements",
+    );
+  });
+
+  it("refuses a selection that steps out of its indentation", () => {
+    const src = "def f():\n    if x:\n        a = 1\n    b = 2\n    return a\n";
+    // Starts inside the `if` body, then includes the shallower statement after it.
+    const from = src.indexOf("        a = 1");
+    const to = src.indexOf("    return");
+    expect(wholeStatements(doc(src), from, to)).toBe("the selection is not one run of statements at the same level");
+  });
+
+  it("accepts a nested block inside the selection", () => {
+    const src = "def f():\n    if x:\n        a = 1\n    return a\n";
+    const from = src.indexOf("    if x:");
+    const to = src.indexOf("    return");
+    expect(wholeStatements(doc(src), from, to)).toEqual({ from, to: to - 1, indent: "    " });
   });
 });
 
@@ -504,9 +539,125 @@ describe("planExtract", () => {
     expect(await planExtract(v)).toBe("the selection must start at a statement of the enclosing block");
   });
 
+  it("refuses a view with no document", async () => {
+    H.text = SRC;
+    // No `lspDoc` field: `docOf` has nothing to answer for this view.
+    view = new EditorView({
+      state: EditorState.create({ doc: SRC, selection: { anchor: BODY_FROM, head: BODY_TO }, extensions: [history()] }),
+    });
+    expect(await planExtract(view)).toBe("no document");
+  });
+
+  it("refuses a statement the parser marked as broken", async () => {
+    fixture();
+    // The statement the selection starts in carries a parse error.
+    const first = H.nodes.find((n) => n.kind === "if_statement")!;
+    first.error = true;
+    const v = editor(SRC, { anchor: BODY_FROM, head: BODY_TO });
+    expect(await planExtract(v)).toBe("the selection contains syntax errors");
+  });
+
+  it("refuses a syntax error reported anywhere inside the selection", async () => {
+    fixture();
+    structureMock.syntaxErrors.mockResolvedValueOnce({
+      errors: [
+        {
+          kind: "unexpected",
+          range: rangeOf(BODY_FROM + 4, BODY_FROM + 5),
+          expected: "=",
+          message: "unexpected token",
+        },
+      ],
+      truncated: false,
+    });
+    const v = editor(SRC, { anchor: BODY_FROM, head: BODY_TO });
+    expect(await planExtract(v)).toBe("the selection contains syntax errors");
+  });
+
   it("refuses a selection with no block at the caret", async () => {
     const v = editor(SRC, { anchor: 0, head: 10 });
     expect(await planExtract(v)).toBe("select statements inside a function");
+  });
+
+  it("refuses an empty selection", async () => {
+    const v = editor(SRC, { anchor: BODY_FROM });
+    expect(await planExtract(v)).toBe("select the statements to extract");
+  });
+
+  it("refuses a language without a syntax-only implementation", async () => {
+    H.text = SRC;
+    view = new EditorView({
+      state: EditorState.create({
+        doc: SRC,
+        selection: { anchor: BODY_FROM, head: BODY_TO },
+        extensions: [
+          history(),
+          lspDoc.of({ doc: 1, path: "/p/a.java", language: "java", uiMode: null, readOnly: false }),
+        ],
+      }),
+    });
+    expect(await planExtract(view)).toBe("Extract Method needs the language server for this language");
+  });
+
+  it("refuses a language the structure service cannot parse", async () => {
+    structureMock.support.mockResolvedValueOnce({ tree: false, locals: false });
+    const v = editor(SRC, { anchor: BODY_FROM, head: BODY_TO });
+    expect(await planExtract(v)).toBe("Extract Method needs the language server here");
+  });
+
+  it("refuses a name whose scope is ambiguous", async () => {
+    H.text = SRC;
+    H.blockSpan = { from: BODY_FROM, to: BODY_TO };
+    tree([
+      ["module", SRC.trimEnd()],
+      ["function_definition", SRC.trimEnd()],
+      ["block", SRC.slice(BODY_FROM, BODY_TO), 0, "body"],
+      ["if_statement", "    if order.discount:\n        rate = 0.9"],
+      ["expression_statement", "        rate = 0.9"],
+    ]);
+    // `order` has two declarations in its scope: the service reports `certain: false`.
+    const def = SRC.indexOf("(order)") + 1;
+    const use = SRC.indexOf("order.discount");
+    const ambiguous: Locals = {
+      status: "local",
+      symbol: {
+        name: "order",
+        kind: "var",
+        definition: rangeOf(def, def + 5),
+        scope: rangeOf(0, H.text.length),
+        references: [rangeOf(use, use + 5)],
+        certain: false,
+        conflicts: [rangeOf(def, def + 5)],
+      },
+    };
+    // Both the declaration and the use must answer ambiguously: the analysis
+    // asks about the use, and an exact entry wins over the fixture fallback.
+    H.localAt.set(def, ambiguous);
+    H.localAt.set(use, ambiguous);
+    const v = editor(SRC, { anchor: BODY_FROM, head: BODY_TO });
+    expect(await planExtract(v)).toBe("'order' is declared more than once here");
+  });
+
+  it("refuses two output variables", async () => {
+    const src = ["def f(a):", "    x = a + 1", "    y = a + 2", "    return x + y", ""].join("\n");
+    const from = src.indexOf("    x = a + 1");
+    const to = src.indexOf("    return x + y");
+    H.text = src;
+    H.blockSpan = { from, to };
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", src.slice(from, to), 0, "body"],
+      ["assignment", "x = a + 1"],
+    ]);
+    const param = src.indexOf("(a)") + 1;
+    local("a", { from: param, to: param + 1 }, [{ from: src.indexOf("a + 1") + 0, to: src.indexOf("a + 1") + 1 }]);
+    const xd = src.indexOf("x = a + 1");
+    local("x", { from: xd, to: xd + 1 }, [{ from: src.indexOf("x + y"), to: src.indexOf("x + y") + 1 }]);
+    const yd = src.indexOf("y = a + 2");
+    local("y", { from: yd, to: yd + 1 }, [{ from: src.indexOf("x + y") + 4, to: src.indexOf("x + y") + 5 }]);
+    const v = editor(src, { anchor: from, head: to });
+    expect(await planExtract(v)).toBe("the selection assigns 2 variables that are used afterwards (x, y)");
   });
 });
 
@@ -528,5 +679,40 @@ describe("extractMethodFallback", () => {
 
     expect(undo(v)).toBe(true);
     expect(v.state.doc.toString()).toBe(SRC);
+  });
+});
+
+describe("docs/extract-method-python.md", () => {
+  it("lists every refusal message the implementation can return", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const doc = readFileSync(join(process.cwd(), "docs/extract-method-python.md"), "utf8");
+    const source = readFileSync(join(process.cwd(), "src/editor/refactor/extractMethod.ts"), "utf8");
+
+    // Fixed messages: quoted literals in `return "…"`.
+    const fixed = new Set(
+      [...source.matchAll(/return "((?:the selection|select statements|no document|Extract Method needs)[^"]*)"/g)].map(
+        (m) => m[1]!,
+      ),
+    );
+    expect(fixed.size).toBeGreaterThan(10);
+
+    // Templates are documented with their interpolations filled in, so match on
+    // the surrounding text: the leading part before `${` and the trailing part.
+    const templates = [...source.matchAll(/return `((?:the selection|')\S[^`]*?)`/g)]
+      .map((m) => m[1]!)
+      .filter((t) => !t.includes("${plan."));
+
+    for (const message of fixed) {
+      expect(doc, `missing from the doc: ${message}`).toContain(message);
+    }
+    for (const template of templates) {
+      const [head, tail] = template.split(/\$\{[^}]*\}/);
+      const rest = template.slice(template.indexOf(tail ?? "") || 0);
+      expect(doc, `missing from the doc: ${template}`).toContain(head!.trimEnd());
+      // The tail after the last interpolation is the part a reader recognizes.
+      const lastChunk = (tail ?? rest).split(/\$\{[^}]*\}/).pop()!;
+      expect(doc, `missing from the doc: ${template}`).toContain(lastChunk.trim());
+    }
   });
 });
