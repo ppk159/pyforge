@@ -1,24 +1,66 @@
-# Inline Method（Python，语法级）—— 拒绝清单
+# Inline Method（Python，语法级）—— 支持范围与拒绝清单
 
 适用于 `src/editor/refactor/inlineFunction.ts`：语言服务器做不了时，光标在函数调用上按 `Ctrl+Alt+N` 走的路径。
 服务器可用时由 `refactor.inline` 回答，本文的规则不适用。
 
-`refactor.inline` 是 IDEA 的**一个**动作：光标在函数调用上时内联方法，在局部变量上时内联变量
-（`inline.ts`，见 `inline-variable-python.md`）。
+## 支持的函数体形态
 
-## v1 的范围
-
-只做一个**能从语法证明正确**的变换：**同文件里函数体恰好是一条 `return <表达式>`**。
+函数体必须是「若干条 `name = value` 声明，然后一条 `return 表达式`」：
 
 ```python
-def double(x):
-    return x * 2
-
-y = double(a + 1)      →      y = (a + 1) * 2
+def tag(vrtl, bd):
+    """Return the tag."""
+    _sz = 32 if vrtl == (2**31 - 1) else 64
+    _bd = bd if bd != 0 else 9988
+    return f"{vrtl}-{_bd}-{_sz}"
 ```
 
-函数体里没有其他语句，就没有局部变量要改名、没有控制流要重写、没有提前 `return` 要处理——
-这些正是更大范围实现必须处理、而这里**直接拒绝**的情况。
+内联后：
+
+```python
+a = 1
+b = 0
+_sz = 32 if a == (2**31 - 1) else 64
+_bd = b if b != 0 else 9988
+x = f"{a}-{_bd}-{_sz}"
+```
+
+| 项 | 说明 |
+|---|---|
+| 参数 | 按实参代入；省略的参数用自己的默认值 |
+| `return 表达式` | 替换调用处 |
+| `return` 前的声明 | **搬到调用语句之前**，按调用处缩进 |
+| docstring | **丢弃而不搬**（移过去没有意义） |
+| 行尾注释 | 丢弃 |
+
+## 局部变量重名（最关键的正确性）
+
+如果调用方已经有同名变量，搬过去的声明会**静默覆盖**它：
+
+```python
+def tag(v):
+    _sz = 64
+    return v + _sz
+
+def caller(v):
+    _sz = 100
+    x = tag(v)        # 直接搬会覆盖 _sz
+    return _sz + 1    # 期望 101，实际拿到 65
+```
+
+所以搬之前先查调用方作用域里有没有这个名字，有就加后缀（`_sz` → `_sz_1`），
+并把**声明里的引用**和**返回表达式里的引用**一起改名：
+
+```python
+def caller(v):
+    _sz = 100
+    _sz_1 = 64
+    x = v + _sz_1
+    return _sz + 1    # 仍是 101
+```
+
+判定用 `identifiers` 找同名出现，落在调用方函数（模块级调用则是整个模块）范围内即视为冲突，
+且排除被调函数自己的范围。
 
 ## 一、语言与服务前提
 
@@ -34,7 +76,7 @@ y = double(a + 1)      →      y = (a + 1) * 2
 | 场景 | 拒绝原因 |
 |---|---|
 | 光标不在调用上 | `place the caret on a call` |
-| 被调的不是裸函数名（`obj.method(...)`、`(f)(...)`） | `the call is not to a plain function name` |
+| 被调的不是裸函数名 | `the call is not to a plain function name` |
 | 调用没有参数列表 | `the call has no argument list` |
 
 ## 三、被调用的函数
@@ -42,15 +84,15 @@ y = double(a + 1)      →      y = (a + 1) * 2
 | 场景 | 拒绝原因 |
 |---|---|
 | 不在本文件声明 | `'name' is not declared in this file` |
-| 声明无法读取 | `the declaration could not be read` |
+| 声明读不出来 | `the declaration could not be read` |
 | 声明没有函数体 | `the declaration has no body` |
 | 声明没有参数列表 | `the declaration has no parameter list` |
 | 参数列表括号不匹配 | `the parameter list is not closed` |
-| 调用出现在它自己体内（递归） | `the call is inside its own declaration` |
-| 签名有 `*args` / `**kwargs` | `the declaration takes *args or **kwargs` |
 | 参数名读不出来 | `a parameter name could not be read` |
+| 带 `*args` / `**kwargs` | `the declaration takes *args or **kwargs` |
+| 调用在自己的声明里（递归） | `the call is inside its own declaration` |
 
-### 函数体的形态
+## 四、函数体的形态
 
 | 场景 | 拒绝原因 |
 |---|---|
@@ -58,146 +100,145 @@ y = double(a + 1)      →      y = (a + 1) * 2
 | 是 `async def` | `the declaration is a coroutine` |
 | 含 `yield` | `the declaration is a generator` |
 | 含 `await` | `the declaration is a coroutine` |
-| `return` 之前有语句 | `the declaration does more than return an expression` |
-| 出现两个 `return` | `the declaration returns from more than one place` |
-| 没有 `return`，`return` 后为空 | `the declaration returns nothing` |
+| **有嵌套块**（`if` / `for` / `try` / `with` / 内层 `def`） | `the declaration has a nested block` |
+| 缩进不一致 | `the declaration is not indented` |
+| docstring 没闭合 | `the declaration has an unterminated docstring` |
+| `return` 前有 `raise`/`assert`/`del`/`import` 等 | `the declaration does more than declare locals and return` |
+| `return` 前有本范围处理不了的语句（如元组解包 `a, b = …`、`out.x = …`） | `the declaration has a statement this scope cannot move` |
+| 最后一条语句不是 `return` | `the declaration ends without a return` |
+| 多个 `return` | `the declaration returns from more than one place` |
+| 没有 `return` 或 `return` 后为空 | `the declaration returns nothing` |
+| 给参数赋值 | `the declaration assigns to its parameter 'x'` |
 
-### 为什么「return 之前有语句」要拒绝
+### 为什么「有嵌套块」要拒绝
+
+```python
+def _type_repr(obj):
+    if isinstance(obj, GenericAlias):
+        return repr(obj)
+    return repr(type(obj))
+```
+
+把这段搬进调用方意味着**复制整个控制流**，并且要把每个 `return` 改写成对目标的赋值。
+这是「内联带控制流的函数」的另一个量级，不在 v1 内。
+
+### 为什么「给参数赋值」要拒绝
 
 ```python
 def f(x):
-    total = x + 1      ← 这条也得内联进来
-    return total
+    x = x + 1
+    return x
 ```
 
-内联它要引入一个临时变量并保证不撞名，属于更大范围的实现。v1 拒绝。
+参数代入后 `x = a + 1` 会覆盖调用方的 `a`（如果实参是裸名）。语义完全不同，所以拒绝。
 
-### 为什么装饰器要拒绝
-
-```python
-@cache
-def f(x):
-    return x * 2
-```
-
-`f(a)` 实际调用的是 `cache` 包装后的对象，不是 `f` 本身。内联成 `a * 2` 会**悄无声息地去掉缓存**。
-
-## 四、参数与实参
+## 五、参数与实参
 
 | 场景 | 拒绝原因 |
 |---|---|
-| 调用展开了参数 `f(*xs)` / `f(**kw)` | `the call unpacks its arguments` |
+| 调用展开了参数 `f(*xs)` | `the call unpacks its arguments` |
 | 传的实参比形参多 | `the call passes more arguments than the declaration takes` |
-| 同一个形参被传两次 | `the call passes 'x' twice` |
-| 关键字实参的标签不是形参名 | `the call passes an unknown keyword 'x'` |
+| 同一形参传两次 | `the call passes 'x' twice` |
+| 关键字标签不是形参名 | `the call passes an unknown keyword 'x'` |
 | 实参无法对应到形参 | `the call's arguments could not be matched to the parameters` |
 | 省略的形参没有默认值 | `the call does not pass 'x' and it has no default` |
 
-省略的形参**有**默认值时，默认值直接代入，不拒绝：
+## 六、调用出现的位置
 
-```python
-def shift(x, by=1):
-    return x + by
+函数体只有一条 `return` 时，调用可以出现在任何表达式位置（直接替换成表达式）。
+**函数体有声明时**，调用必须是：
 
-y = shift(a)      →      y = a + 1
-```
-
-## 五、能做什么
-
-| 场景 | 结果 |
+| 位置 | 允许 |
 |---|---|
-| 函数体是 `return <表达式>` | 调用处替换成表达式，形参按实参代入 |
-| 形参在表达式里出现多次 | 每处都替换（出现位置重叠时拒绝：`a parameter occurrence could not be replaced`） |
-| 实参是原子（名字、属性、调用、字面量、列表…） | 直接代入，不加括号 |
-| 实参是复合表达式（`a + 1`） | 加括号：`(a + 1) * 2` |
-| 调用在赋值右侧 / return / 实参位置 | 结果不再包一层括号 |
-| 调用在运算符、比较、属性访问里 | 结果包一层括号 |
-| 调用的形参被省略且有默认值 | 默认值代入 |
+| `x = f(...)`（赋值右侧整块） | ✅ |
+| `f(...)` 单独一行 | ✅ |
+| `return f(...)` | ✅ |
+| `y = f(...) + 1`、`g(f(...))`、`f(...).attr` | ❌ `the call is part of an expression and its declaration has statements` |
 
-### 括号策略
+因为多行声明塞不进一个表达式。
 
-不是简单「一律加括号」，而是看**调用所在的上下文**：
+## 七、括号策略
 
-| 调用位置 | 是否包括号 | 例子 |
+只有单表达式体才需要考虑优先级：
+
+| 调用位置 | 是否包括号 |
+|---|---|
+| `y = f(a)`（赋值右侧整块） | 否 |
+| `return f(a)` | 否 |
+| `g(f(a))`（实参） | 否 |
+| `y = f(a) + 1` | **是** |
+| `y = f(a).attr` | **是** |
+
+有声明时，调用必然在语句位置，`wrap` 总是 false。
+
+## 八、实测覆盖率
+
+CPython 标准库 20 个模块、52 个「本文件函数被调用」的位置：
+
+| 版本 | 成功 | 原因 |
 |---|---|---|
-| `y = f(a)`（赋值右侧整块） | 否 | `y = (a + 1) * 2` |
-| `return f(a)` | 否 | `return a * 2` |
-| `g(f(a))`（实参） | 否 | `g(a * 2)` |
-| `y = f(a) + 1` | **是** | `y = (a * 2) + 1` |
-| `y = f(a).attr` | **是** | `y = (a + 1).attr` |
+| 只支持单 `return` | 3/52 = 5.8% | — |
+| 支持 `return` 前有声明 | 6/52 = 11.5% | 见下方四轮修复 |
 
-这样既不产生 `((a + 1) * 2)` 这种冗余括号，也不会改变优先级。
+四轮修复过程中暴露的真缺陷：
 
-## 六、生成结果
+| # | 缺陷 | 后果 |
+|---|---|---|
+| 1 | `vrtl == (2**31-1)` 被判成「给参数赋值」 | 误拒（只看后 2 个字符，`==` 被看成 `=`）→ 改用 `isWriteTarget` |
+| 2 | 多行 docstring 被当成「无法移动的语句」 | 误拒（`_aix_bos_rte` 这类函数全部中招） |
+| 3 | 行尾注释让 `nodeAt` 返回整个 block | 误拒（`out = ... # type: ignore`） |
 
-```python
-# 之前
-def double(x):
-    return x * 2
+**最终拒绝分布（52 个）**：
 
-def shift(x, by=1):
-    return x + by
-
-def same(x):
-    return x
-
-def caller(a, b):
-    one = double(a + 1)
-    two = shift(b)
-    three = same(a)
-    return one + two + three
-
-# 内联 three 处之后
-def caller(a, b):
-    one = (a + 1) * 2
-    two = b + 1
-    three = a
-    return one + two + three
-```
-
-| 细节 | 行为 |
+| 次数 | 原因 |
 |---|---|
-| undo | 一次 `Ctrl+Z` 还原一处内联（每处一个独立编辑） |
-| 被调函数 | **不删除**，只替换调用点（IDEA 的 Inline Method 同样保留声明） |
-| 编辑之后 | Problems 面板保持为空（实测：9 秒 0 错误 0 警告） |
+| 21 | 有嵌套块（`if`/`for`/`try`）——真实的控制流 |
+| 4 | 带 `*args` |
+| 4 | 生成器 |
+| 2 | 无法移动的语句（元组解包等） |
+| 2 | 没有 `return` |
+| 11 | 不在本文件声明 |
+| 2 | 调用在表达式里且有声明 |
+| ~6 | 其他 |
 
-## 七、与 Inline Variable 的分派
+**结论：真实瓶颈是控制流（21/52），不是「`return` 前有语句」。**
+把「`return` 前有声明」做完只从 5.8% 提到 11.5%，因为标准库的小函数大多带分支。
+下一步要提升，必须做「内联带控制流的函数」，那是另一个量级。
 
-`refactor.inline` 用一个入口，按光标下的节点决定走哪条：
-
-```
-光标在调用上（文本匹配 /^[A-Za-z_]\w*\s*\(/）  → Inline Method（本文）
-否则                                          → Inline Variable（inline-variable-python.md）
-```
-
-## 八、证据
+## 九、证据
 
 | 结论 | 出处 |
 |---|---|
-| 纯函数（参数/实参解析、括号判定） | `src/editor/refactor/inlineFunction.test.ts`（19 个用例） |
-| 真机端到端 | `fixtures/python-app` 的临时探针（验证后已删除） |
+| 纯函数（参数/实参/括号） | `src/editor/refactor/inlineFunction.test.ts` |
+| 声明搬移 + 重名 | 同上（含「不覆盖调用方变量」的端到端用例） |
+| docstring 丢弃 | 同上 |
+| 真机端到端 | `fixtures/python-app` 临时探针（验证后已删除） |
 
 真机实测：
 
 ```
-double(a + 1)                  → (a + 1) * 2        wrap=false
-shift(b)     (by=1 省略)        → b + 1             wrap=false
-same(a)      (原子)            → a                 wrap=false
-helper_with_statements(a)      → 拒绝：return 之前有语句
+def tag(vrtl, bd):
+    _sz = 32 if vrtl == (2**31-1) else 64
+    _bd = bd if bd != 0 else 9988
+    return f"{vrtl}-{_bd}-{_sz}"
 
-三处内联后文件被真 Python 执行：caller(3, 10) == 26（手算一致）
-Problems 面板 9 秒 0 错误 0 警告
-三次 Ctrl+Z 完全还原
+a = 1; b = 0
+before = tag(a, b)
+x = tag(a, b)          ← 内联
+
+结果：
+  真 Python 执行：before == x == "1-9988-64"   （完全等价）
+  调用方已有的 _sz 保留，搬过去的改名为 _sz_1
+  Problems 面板 9 秒 0 错误 0 警告
+  一次 Ctrl+Z 还原
 ```
 
-## 九、尚未实现
+## 十、尚未实现
 
 | IDEA 有、这里没有 | 为什么难 |
 |---|---|
-| `return` 前有语句的函数 | 要把局部变量带进调用处，还要避免撞名 |
-| 多个 `return` / 分支 | 要把控制流改写成表达式（三元或提前返回） |
-| 递归内联 | 需要展开深度限制 |
+| 带控制流的函数体 | 要把 `if`/`for`/`try` 复制到调用方，并把每个 `return` 改写成赋值 |
+| 多个 `return` | 同上，且需要引入"结果"变量和标记 |
 | 跨文件内联 | 需要读另一个文档并处理 import |
-| 内联后删除无人使用的声明 | 需要全项目引用搜索 |
 | `obj.method()` 形式 | 需要 `self` 绑定和类层次分析 |
-| 生成器 / 协程 | 不是表达式替换，语义完全不同 |
+| 参数被赋值 | 需要引入临时变量保存实参 |

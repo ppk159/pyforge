@@ -324,19 +324,129 @@ describe("planInlineFunction", () => {
     expect(plan.wrap).toBe(false);
   });
 
-  it("refuses a body with statements before its return", async () => {
-    const src = ["def f(x):", "    total = x + 1", "    return total", "", "y = f(a)", ""].join("\n");
+  it("moves the declarations before the return into the caller", async () => {
+    const src = ["def f(x):", "    total = x + 1", "    return total * 2", "", "y = f(a)", ""].join("\n");
     H.text = src;
     outlineOf("f");
     tree([
       ["module", src.trimEnd()],
-      ["function_definition", "def f(x):\n    total = x + 1\n    return total"],
+      ["function_definition", "def f(x):\n    total = x + 1\n    return total * 2"],
+      ["block", "    total = x + 1\n    return total * 2", 0, "body"],
+      ["expression_statement", "    total = x + 1"],
+      ["assignment", "total = x + 1"],
+      ["return_statement", "    return total * 2"],
+      ["assignment", "y = f(a)"],
       ["call", "f(a)", 0, "right"],
       ["identifier", "f", 0, "function"],
       ["argument_list", "(a)", 0, "arguments"],
     ]);
     const v = editor(src, src.indexOf("f(a)") + 1);
-    expect(await planInlineFunction(v)).toBe("the declaration does more than return an expression");
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("total * 2");
+    expect(plan.prelude).not.toBeNull();
+    // The call sits at module level, so the moved declaration is unindented too.
+    expect(plan.prelude!.text).toBe("total = a + 1\n");
+  });
+
+  it("renames a declaration that would shadow the caller's own variable", async () => {
+    // `_sz` exists in the caller, so the moved declaration must not reuse it.
+    const src = [
+      "def tag(v):",
+      "    _sz = 64",
+      "    return v + _sz",
+      "",
+      "def caller(v):",
+      "    _sz = 100",
+      "    x = tag(v)",
+      "    return _sz + 1",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("tag");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def tag(v):\n    _sz = 64\n    return v + _sz"],
+      ["block", "    _sz = 64\n    return v + _sz", 0, "body"],
+      ["expression_statement", "    _sz = 64"],
+      ["assignment", "_sz = 64"],
+      ["return_statement", "    return v + _sz"],
+      ["function_definition", "def caller(v):\n    _sz = 100\n    x = tag(v)\n    return _sz + 1"],
+      ["block", "    _sz = 100\n    x = tag(v)\n    return _sz + 1", 0, "body"],
+      ["expression_statement", "    x = tag(v)"],
+      ["assignment", "x = tag(v)"],
+      ["assignment", "x = tag(v)"],
+      ["call", "tag(v)", 1, "right"],
+      ["identifier", "tag", 0, "function"],
+      ["argument_list", "(v)", 0, "arguments"],
+    ]);
+    // The signature also spells `tag(v)`, so locate the call after `x = `.
+    const v = editor(src, src.indexOf("x = tag(v)") + 5);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.prelude!.renamed).toEqual([{ from: "_sz", to: "_sz_1" }]);
+    // Both the declaration and the returned expression use the new name.
+    expect(plan.prelude!.text).toContain("_sz_1 = 64");
+    expect(plan.text).toContain("_sz_1");
+  });
+
+  it("drops a docstring instead of moving it", async () => {
+    // Most helpers open with a docstring; dropping it keeps the shape inlinable.
+    const src = [
+      "def tag(v):",
+      '    """Return the tag.',
+      "",
+      "    More detail here.",
+      '    """',
+      "    _sz = 64",
+      "    return v + _sz",
+      "",
+      "y = tag(a)",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("tag");
+    tree([
+      ["module", src.trimEnd()],
+      [
+        "function_definition",
+        'def tag(v):\n    """Return the tag.\n\n    More detail here.\n    """\n    _sz = 64\n    return v + _sz',
+      ],
+      [
+        "block",
+        '    """Return the tag.\n\n    More detail here.\n    """\n    _sz = 64\n    return v + _sz',
+        0,
+        "body",
+      ],
+      ["expression_statement", "    _sz = 64"],
+      ["assignment", "_sz = 64"],
+      ["return_statement", "    return v + _sz"],
+      ["assignment", "y = tag(a)"],
+      ["call", "tag(a)", 0, "right"],
+      ["identifier", "tag", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("y = tag(a)") + 5);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    // The docstring is gone; only the declaration is moved.
+    expect(plan.prelude!.text).toBe("_sz = 64\n");
+    expect(plan.text).toBe("a + _sz");
+  });
+
+  it("refuses a body with a branch", async () => {
+    const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("f");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def f(x):\n    if x:\n        return 1\n    return 0"],
+      ["call", "f(a)", 0, "right"],
+      ["identifier", "f", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("f(a)") + 1);
+    expect(await planInlineFunction(v)).toBe("the declaration has a nested block");
   });
 
   it("refuses a generator, a coroutine and a decorated function", async () => {
@@ -505,6 +615,43 @@ describe("inlineFunctionFallback", () => {
     expect(v.state.doc.toString()).toContain("y = v");
   });
 
+  it("moves the declarations and keeps the caller's own variable intact", async () => {
+    // The point of the rename: `_sz` in the caller must keep its value.
+    const src = [
+      "def tag(v):",
+      "    _sz = 64",
+      "    return v + _sz",
+      "",
+      "def caller(v):",
+      "    _sz = 100",
+      "    x = tag(v)",
+      "    return _sz + 1, x",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("tag");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def tag(v):\n    _sz = 64\n    return v + _sz"],
+      ["block", "    _sz = 64\n    return v + _sz", 0, "body"],
+      ["expression_statement", "    _sz = 64"],
+      ["assignment", "_sz = 64"],
+      ["return_statement", "    return v + _sz"],
+      ["function_definition", "def caller(v):\n    _sz = 100\n    x = tag(v)\n    return _sz + 1, x"],
+      ["block", "    _sz = 100\n    x = tag(v)\n    return _sz + 1, x", 0, "body"],
+      ["expression_statement", "    x = tag(v)"],
+      ["assignment", "x = tag(v)"],
+      ["call", "tag(v)", 1, "right"],
+      ["identifier", "tag", 1, "function"],
+      ["argument_list", "(v)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("x = tag(v)") + 5);
+    expect(await inlineFunctionFallback(v)).toBe(true);
+    const out = v.state.doc.toString();
+    // The moved declaration uses a fresh name; the caller's `_sz` is untouched.
+    expect(out).toContain("    _sz = 100\n    _sz_1 = 64\n    x = v + _sz_1\n    return _sz + 1, x");
+  });
+
   it("reports a refusal as handled, leaving the document alone", async () => {
     const src = ["def f(x):", "    total = x", "    return total", "", "y = f(a)", ""].join("\n");
     H.text = src;
@@ -519,6 +666,6 @@ describe("inlineFunctionFallback", () => {
     const v = editor(src, src.indexOf("f(a)") + 1);
     expect(await inlineFunctionFallback(v)).toBe(true);
     expect(v.state.doc.toString()).toBe(src);
-    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("does more than return an expression"));
+    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("has a statement this scope cannot move"));
   });
 });
