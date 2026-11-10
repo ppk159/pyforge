@@ -16,14 +16,26 @@
 import type { ChangeSet, EditorState, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
-import type { Locals, LocalSymbol, Range, SyntaxNode } from "@/bindings";
+import type { Locals, LocalSymbol } from "@/bindings";
 import { structure } from "@/editor/structure";
 import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { docOf } from "@/editor/lsp/lsp";
-import { offsetsToRange, rangeToOffsets } from "@/editor/lsp/positions";
+import { offsetsToRange } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
 import { caretAnchor, openPopup } from "@/editor/lsp/popupStore";
 import { isIdentifier, isKeyword, nameStyle, uniqueNames } from "./names";
+import {
+  firstContent,
+  indentOf,
+  isBlankLine as blank,
+  isWriteTarget as isWritten,
+  offsetsOf as offsets,
+  signatureBinds,
+  spanOf,
+  statementAt,
+  withinRange as within,
+  type StatementAt,
+} from "./analysis";
 import { tx } from "@/platform/i18n";
 
 /** Languages this syntax-only implementation covers. */
@@ -84,30 +96,8 @@ interface Prepared {
   doc: Text;
 }
 
-/** Offsets of a `Range` (definitions and references arrive as ranges, not nodes). */
-function offsets(doc: Text, range: Range): { from: number; to: number } {
-  return rangeToOffsets(doc, range);
-}
-
-/** Offsets of a node in the document. */
-function spanOf(doc: Text, node: { range: Range }): { from: number; to: number } {
-  return rangeToOffsets(doc, node.range);
-}
-
-function indentOf(doc: Text, pos: number): string {
-  return /^[ \t]*/.exec(doc.lineAt(pos).text)![0];
-}
-
-function blank(line: string): boolean {
-  return !line.trim();
-}
-
 function cap(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-function within(span2: { from: number; to: number }, from: number, to: number): boolean {
-  return span2.from >= from && span2.to <= to;
 }
 
 /**
@@ -150,60 +140,11 @@ export function wholeStatements(
 }
 
 /**
- * Whether `range` is written rather than read: an assignment target, a `for`
- * target, an `as` binding or a walrus target. Reads only, so a variable the
- * caller owns is never silently re-bound by the extracted method.
- */
-async function isWritten(p: Prepared, range: Range): Promise<boolean> {
-  const n = await structure.nodeAt(p.ctx.doc, range).catch(() => null);
-  if (!n) return false;
-  const chain = [n.node, ...n.ancestors];
-  for (let i = 0; i + 1 < chain.length; i++) {
-    const node = chain[i]!;
-    const parent = chain[i + 1]!;
-    if (node.field === "left" && /assignment|for_statement|for_in_clause/.test(parent.kind)) return true;
-    if (node.field === "alias" && /as_pattern/.test(parent.kind)) return true;
-    if (node.field !== "value" && /named_expression/.test(parent.kind)) return true;
-  }
-  return false;
-}
-
-/**
  * `self` and `cls` are in the shared keyword list (they are keywords in Rust and
  * Ruby) but are ordinary implicit parameters in Python: skipping them would drop
  * a free variable from the extracted signature.
  */
 const IMPLICIT_PARAMS = new Set(["self", "cls"]);
-
-/**
- * Whether the enclosing function *signature* binds `name`.
- *
- * Used when `locals` cannot resolve a name inside the selection: either the
- * query missed a parameter (a local, which the extracted method must receive)
- * or the name is module-level (`Task`, `Priority`, a builtin) and stays in
- * scope at the new declaration, so passing it would be wrong.
- *
- * Only the signature is examined. Scanning the body would misread
- * `task = Task(...)` as binding `Task`, because `Task` follows the `=`.
- */
-function signatureBinds(ownerText: string, name: string): boolean {
-  const open = ownerText.indexOf("(");
-  if (open < 0) return false;
-  let depth = 0;
-  let close = open;
-  for (let i = open; i < ownerText.length; i++) {
-    const c = ownerText[i];
-    if (c === "(") depth++;
-    else if (c === ")" && --depth === 0) {
-      close = i;
-      break;
-    }
-  }
-  const signature = ownerText.slice(open + 1, close);
-  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // A parameter is the name followed by an annotation, a default, or a separator.
-  return new RegExp(`(^|[^\\w.])${n}\\s*($|[:,)=]|=(?!=))`).test(signature);
-}
 
 interface Flow {
   params: string[];
@@ -272,7 +213,7 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
     if (!refsInside.length) continue;
     // Declared outside and read here: the extracted method must receive it.
     for (const r of refsInside) {
-      if (await isWritten(p, offsetsToRange(p.doc, r.from, r.to))) {
+      if (await isWritten(p.ctx, offsetsToRange(p.doc, r.from, r.to))) {
         return `the selection assigns '${name}', which is declared outside it`;
       }
     }
@@ -285,46 +226,14 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
   return { params: params.map((x) => x.name), output: written[0] ?? null };
 }
 
-/** Node kinds whose direct children are statements. Same list as `introduce.ts`. */
-const BLOCKISH =
-  /^(block|chunk|statement_list|program|module|source_file|compound_statement|statement_block|body|do_block|statements|declaration_list|class_body|template_body)$/;
-
-/** First offset of `[from, to)` that is not whitespace (the statement itself). */
-function firstContent(doc: Text, from: number, to: number): number {
-  for (let i = from; i < to; i++) {
-    const c = doc.sliceString(i, i + 1);
-    if (c !== " " && c !== "\t" && c !== "\n" && c !== "\r" && c !== "\\") return i;
-  }
-  return from;
-}
-
-interface Block {
-  /** The statement the selection starts in: a direct child of `block`. */
-  statement: SyntaxNode;
-  block: SyntaxNode;
-  /** The declaration that owns `block` (the enclosing function), if any. */
-  owner: SyntaxNode | undefined;
-}
-
 /**
  * The statement list the selection belongs to and the statement it starts in.
- *
- * `expressionAt` answers for *expressions*: on a multi-line statement block it
- * reports the enclosing declaration instead of the first statement, so the
- * ancestors of the node at the selection's first character are walked instead.
+ * The shared `statementAt` answers that; `null` becomes this refactoring's
+ * refusal text.
  */
-async function locateBlock(p: Prepared, sel: { from: number; to: number }): Promise<Block | string> {
-  const at = firstContent(p.doc, sel.from, sel.to);
-  const n = await structure.nodeAt(p.ctx.doc, offsetsToRange(p.doc, at, at));
-  if (!n) return "select statements inside a function";
-  const chain = [n.node, ...n.ancestors];
-  for (let i = 0; i + 1 < chain.length; i++) {
-    const node = chain[i]!;
-    const parent = chain[i + 1]!;
-    if (BLOCKISH.test(node.kind) || !BLOCKISH.test(parent.kind)) continue;
-    return { statement: node, block: parent, owner: chain[i + 2] };
-  }
-  return "select statements inside a function";
+async function locateBlock(p: Prepared, sel: { from: number; to: number }): Promise<StatementAt | string> {
+  const found = await statementAt(p.ctx, p.doc, firstContent(p.doc, sel.from, sel.to));
+  return found ?? "select statements inside a function";
 }
 
 /**

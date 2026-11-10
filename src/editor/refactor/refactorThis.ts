@@ -31,6 +31,7 @@ import {
 } from "./catalog";
 import { introduceFallback, type IntroduceKind } from "./introduce";
 import { extractMethodFallback } from "./extractMethod";
+import { inlineFallback } from "./inline";
 import { languageName, queryRefactorActions } from "./query";
 import {
   EXPRESSION_REFACTORINGS,
@@ -110,9 +111,17 @@ const INTRODUCE: Partial<Record<RefactoringId, IntroduceKind>> = {
   extractConstant: "constant",
 };
 
-/** Languages whose syntax-only Extract Method is implemented.
- *  Kept in sync with `extractMethod.ts` (Python only for now). */
-const EXTRACT_METHOD_LANGUAGES = new Set(["python"]);
+/**
+ * Languages whose syntax-only Extract Method / Inline is implemented. Kept in
+ * sync with the `LANGUAGES` set of `extractMethod.ts` and `inline.ts`.
+ */
+const SYNTAX_REFACTORING_LANGUAGES = new Set(["python"]);
+
+/** Refactorings that fall back to a syntax-only implementation. */
+const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {
+  extractMethod: extractMethodFallback,
+  inline: inlineFallback,
+};
 
 /** First error diagnostic on the selected lines (servers offer nothing over broken code). */
 function errorAround(view: EditorView): string | null {
@@ -188,8 +197,11 @@ export async function runRefactoring(view: EditorView, id: RefactoringId): Promi
   }
   // Extract Method has a syntax-only implementation for the languages where
   // the structure service can resolve the free variables (see `extractMethod.ts`).
-  if (id === "extractMethod" && EXTRACT_METHOD_LANGUAGES.has(ctx.language)) {
-    if (await extractMethodFallback(view)) return;
+  // Extract Method and Inline have a syntax-only implementation for the
+  // languages where the structure service can resolve the names involved.
+  const fallback = SYNTAX_FALLBACKS[id];
+  if (fallback && SYNTAX_REFACTORING_LANGUAGES.has(ctx.language)) {
+    if (await fallback(view)) return;
   }
   showHint(view, cannotPerform(await unavailableReason(view, r, answer, all)));
 }
