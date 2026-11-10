@@ -33,7 +33,8 @@ import { introduceFallback, type IntroduceKind } from "./introduce";
 import { extractMethodFallback } from "./extractMethod";
 import { inlineFallback } from "./inline";
 import { inlineFunctionFallback, isCallUnderCaret } from "./inlineFunction";
-import { appendParameterFallback } from "./changeSignature";
+import { appendParameterFallback, renameParameterFallback } from "./changeSignature";
+import { chooseItem, promptInput } from "@/workbench/inputDialogs";
 import { languageName, queryRefactorActions } from "./query";
 import {
   EXPRESSION_REFACTORINGS,
@@ -44,7 +45,6 @@ import {
 } from "./serverIntroduce";
 import { safeDelete } from "./safeDelete";
 import { startHierarchyRefactoring } from "./hierarchy";
-import { promptInput } from "@/workbench/inputDialogs";
 import { tx } from "@/platform/i18n";
 
 /** Languages whose server runs the class-hierarchy refactorings (the app-owned JDT extension). */
@@ -133,29 +133,56 @@ async function inlineAnything(view: EditorView): Promise<boolean> {
 }
 
 /**
- * Asks for `name=default` and appends the parameter. IDEA's Change Signature
- * dialog can add, remove and reorder; the syntax-only path adds one parameter
- * with a default, which is the edit that keeps every call site valid.
+ * IDEA's Change Signature dialog edits a whole parameter table. Without a
+ * language server this path offers the two edits it can prove: append a
+ * parameter with a default, or rename one (following keyword call sites).
  */
 async function changeSignatureHere(view: EditorView): Promise<boolean> {
-  const spec = await promptInput({
+  const choice = await chooseItem({
     title: "Change Signature",
-    label: "Parameter to append (name=default)",
-    placeholder: "cache=None",
-    okLabel: "Append",
-    hint: tx`Only a new parameter with a default is supported without the language server: existing calls keep binding the same parameters.`,
+    items: ["Append a parameter with a default…", "Rename a parameter…"],
+    empty: "No parameter change is supported here",
+  });
+  if (!choice) return false;
+
+  if (choice.startsWith("Append")) {
+    const spec = await promptInput({
+      title: "Change Signature",
+      label: "Parameter to append (name=default)",
+      placeholder: "cache=None",
+      okLabel: "Append",
+      hint: tx`Existing calls keep binding the same parameters, so no call site changes.`,
+      validate: (value) => {
+        const eq = value.indexOf("=");
+        if (eq <= 0) return "Write name=default";
+        const name = value.slice(0, eq).trim();
+        if (!/^[A-Za-z_]\w*$/.test(name)) return `'${name}' is not a valid parameter name`;
+        if (!value.slice(eq + 1).trim()) return "The parameter needs a default";
+        return null;
+      },
+    });
+    if (!spec) return false;
+    const eq = spec.indexOf("=");
+    return appendParameterFallback(view, spec.slice(0, eq).trim(), spec.slice(eq + 1).trim());
+  }
+
+  const spec = await promptInput({
+    title: "Rename Parameter",
+    label: "Rename parameter (from -> to)",
+    placeholder: "title -> name",
+    okLabel: "Rename",
+    hint: tx`Calls that pass the parameter by keyword are updated; positional calls need no change.`,
     validate: (value) => {
-      const eq = value.indexOf("=");
-      if (eq <= 0) return "Write name=default";
-      const name = value.slice(0, eq).trim();
-      if (!/^[A-Za-z_]\w*$/.test(name)) return `'${name}' is not a valid parameter name`;
-      if (!value.slice(eq + 1).trim()) return "The parameter needs a default";
+      const parts = value.split("->").map((s) => s.trim());
+      if (parts.length !== 2 || !parts[0] || !parts[1]) return "Write from -> to";
+      if (!/^[A-Za-z_]\w*$/.test(parts[1]!)) return `'${parts[1]}' is not a valid parameter name`;
       return null;
     },
   });
   if (!spec) return false;
-  const eq = spec.indexOf("=");
-  return appendParameterFallback(view, spec.slice(0, eq).trim(), spec.slice(eq + 1).trim());
+  const [from, to] = spec.split("->").map((s) => s.trim());
+  if (!from || !to) return false;
+  return renameParameterFallback(view, from, to);
 }
 
 const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {

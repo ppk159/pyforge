@@ -165,6 +165,22 @@ pub struct IdentifierOccurrence {
     /// Member / label position (`obj.name`, `name: value` labels): refers to
     /// a member, not to a variable in scope.
     pub qualified: bool,
+    /// What the token names where that changes how a refactoring must treat it.
+    pub role: IdentifierRole,
+}
+
+/// What an identifier occurrence names, when it is not an ordinary variable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum IdentifierRole {
+    /// A keyword argument's label (`f(x=1)`): renaming the parameter must follow
+    /// the call site, unlike a positional argument, which binds by position.
+    KeywordArgument,
+    /// A parameter of a function signature.
+    Parameter,
+    /// Anything else.
+    #[default]
+    Other,
 }
 
 /// One distinct name inside a range, with the answer `locals` gives for it.

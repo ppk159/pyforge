@@ -88,7 +88,12 @@ const structureMock = {
   identifiers: vi.fn(async (_doc: number, name: string) => {
     const out: IdentifierOccurrence[] = [];
     for (const m of H.text.matchAll(new RegExp(`(?<![\\w$])${name}(?![\\w$])`, "g"))) {
-      out.push({ range: rangeOf(m.index!, m.index! + name.length), kind: "identifier", qualified: false });
+      out.push({
+        range: rangeOf(m.index!, m.index! + name.length),
+        kind: "identifier",
+        qualified: false,
+        role: "other",
+      });
     }
     return out;
   }),

@@ -501,3 +501,36 @@ fn locals_in_range_keeps_document_order() {
     // `rows` is the parameter and comes first of all: it appears on line 1.
     assert_eq!(names.first().copied(), Some("rows"), "{names:?}");
 }
+
+/// `role` tells a rename which occurrences to follow: a keyword label binds by
+/// name, a positional argument binds by position.
+#[test]
+fn identifier_role_marks_keyword_labels_and_parameters() {
+    let src = r#"def make(title, tags=None):
+    task = Task(title, tags=tags)
+    return task
+
+make("a", tags=1)
+"#;
+    let l = lang("python");
+    let snap = Snapshot::text(&l, src);
+    let found = service().identifiers_named(&snap, "tags", &none()).expect("identifiers");
+    let roles: Vec<(u32, IdentifierRole)> = found.iter().map(|o| (o.range.start.line, o.role)).collect();
+    // Line 0: the parameter in the signature.
+    assert_eq!(roles[0], (0, IdentifierRole::Parameter), "{roles:?}");
+    // Line 1: `tags=tags` — the label is a keyword argument, the value is a use.
+    assert_eq!(roles[1], (1, IdentifierRole::KeywordArgument), "{roles:?}");
+    assert_eq!(roles[2], (1, IdentifierRole::Other), "{roles:?}");
+    // Line 4: the call site's label.
+    assert_eq!(roles[3], (4, IdentifierRole::KeywordArgument), "{roles:?}");
+}
+
+/// A positional argument is not a keyword label, so a rename must leave it alone.
+#[test]
+fn identifier_role_leaves_positional_arguments_alone() {
+    let src = "def f(a, b):\n    return a\n\nf(1, 2)\n";
+    let l = lang("python");
+    let snap = Snapshot::text(&l, src);
+    let found = service().identifiers_named(&snap, "a", &none()).expect("identifiers");
+    assert!(found.iter().all(|o| o.role != IdentifierRole::KeywordArgument), "{found:?}");
+}

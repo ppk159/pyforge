@@ -83,6 +83,7 @@ const structureMock = {
         kind: "identifier",
         // `obj.x` names a member, which is never a parameter reference.
         qualified: H.text[m.index! - 1] === ".",
+        role: "other",
       });
     }
     return out;

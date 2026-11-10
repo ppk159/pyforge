@@ -1,7 +1,7 @@
 //! Identifier occurrences by name (find-usages filtering, text-based rename preview).
 
 use crate::kinds::in_comment_or_string;
-use crate::types::IdentifierOccurrence;
+use crate::types::{IdentifierOccurrence, IdentifierRole};
 use crate::{Ctx, StructureResult};
 use tree_sitter::TreeCursor;
 
@@ -90,7 +90,34 @@ pub(crate) fn identifiers_named(cx: &Ctx, name: &str) -> StructureResult<Vec<Ide
             range: cx.lines.range(start, end),
             kind: kind.to_owned(),
             qualified: cx.kinds.is_qualified_in(&node, parent, grandparent),
+            role: role_of(&node, parent),
         });
     }
     Ok(out)
+}
+
+/// What the token names, where that changes how a refactoring must treat it.
+///
+/// `keyword_argument`'s `name` field and a signature's parameters are the two
+/// cases a rename has to tell apart from an ordinary use: a keyword label binds
+/// by name and must follow a rename, a positional argument binds by position and
+/// must not be touched.
+fn role_of(node: &tree_sitter::Node, parent: Option<tree_sitter::Node>) -> IdentifierRole {
+    let Some(parent) = parent else { return IdentifierRole::Other };
+    if parent.kind() == "keyword_argument" && crate::kinds::field_name(node) == Some("name") {
+        return IdentifierRole::KeywordArgument;
+    }
+    // Python's grammar wraps each parameter in one of these, except a bare `a`.
+    if matches!(
+        parent.kind(),
+        "parameters"
+            | "default_parameter"
+            | "typed_parameter"
+            | "typed_default_parameter"
+            | "list_splat_pattern"
+            | "dictionary_splat_pattern"
+    ) {
+        return IdentifierRole::Parameter;
+    }
+    IdentifierRole::Other
 }

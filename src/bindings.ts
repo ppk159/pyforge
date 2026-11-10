@@ -4858,7 +4858,21 @@ export type IdentifierOccurrence = {
 	 *  a member, not to a variable in scope.
 	 */
 	qualified: boolean,
+	/**  What the token names where that changes how a refactoring must treat it. */
+	role: IdentifierRole,
 };
+
+/**  What an identifier occurrence names, when it is not an ordinary variable. */
+export type IdentifierRole = 
+/**
+ *  A keyword argument's label (`f(x=1)`): renaming the parameter must follow
+ *  the call site, unlike a positional argument, which binds by position.
+ */
+"keywordArgument" | 
+/**  A parameter of a function signature. */
+"parameter" | 
+/**  Anything else. */
+"other";
 
 export type IgnoreDestination = "gitignore" | "localExclude";
 

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { history, undo } from "@codemirror/commands";
-import type { NodeAt, Range, SyntaxNode } from "@/bindings";
+import { history } from "@codemirror/commands";
+import type { IdentifierOccurrence, Locals, NodeAt, Range, SyntaxNode, WorkspaceEdit } from "@/bindings";
 
 // --- a hand-built syntax tree over the test document -------------------------
 
@@ -14,7 +14,13 @@ interface FakeNode {
   parent: FakeNode | null;
 }
 
-const H = vi.hoisted(() => ({ text: "", nodes: [] as FakeNode[] }));
+const H = vi.hoisted(() => ({
+  text: "",
+  nodes: [] as FakeNode[],
+  locals: null as unknown,
+  identifiers: [] as unknown[],
+  fileOccurrences: [] as unknown[],
+}));
 
 function posOf(off: number) {
   const before = H.text.slice(0, off);
@@ -70,6 +76,9 @@ const structureMock = {
     for (let p = best.parent; p; p = p.parent) ancestors.push(toSyntax(p));
     return { node: toSyntax(best), ancestors };
   }),
+  locals: vi.fn(async () => H.locals as Locals),
+  identifiers: vi.fn(async () => H.identifiers as IdentifierOccurrence[]),
+  identifiersInFiles: vi.fn(async () => H.fileOccurrences as never[]),
 };
 
 vi.mock("@/editor/structure", () => ({ structure: structureMock }));
@@ -78,10 +87,9 @@ const showHint = vi.fn();
 vi.mock("@/editor/lsp/hint", () => ({ showHint }));
 
 const { lspDoc } = await import("@/editor/lsp/lsp");
-const { parameterItems, paramName, appendParameter, signatureAt, planAppendParameter, appendParameterFallback } =
-  await import("./changeSignature");
+const { parameterItems, paramName, appendParameter, planChangeSignature } = await import("./changeSignature");
 
-// --- editor -------------------------------------------------------------------
+// --- helpers ------------------------------------------------------------------
 
 let view: EditorView | null = null;
 
@@ -103,17 +111,39 @@ function editor(doc: string, caret: number) {
 /** The tree for a one-function file: `module > function_definition`. */
 function fnTree(doc: string) {
   H.text = doc;
-  const bodyEnd = doc.trimEnd().length;
+  const end = doc.trimEnd().length;
   tree([
     ["module", doc.trimEnd()],
-    ["function_definition", doc.slice(0, bodyEnd)],
+    ["function_definition", doc.slice(0, end)],
     ["parameters", doc.slice(doc.indexOf("("), doc.indexOf(")") + 1)],
   ]);
+}
+
+/** The items of a signature, failing the test when the list cannot be read. */
+function items(signature: string) {
+  const got = parameterItems(signature);
+  if (typeof got === "string") throw new Error(got);
+  return got;
+}
+
+/** The lone `edit` file of a plan, failing when the plan is a refusal. */
+function planned(result: WorkspaceEdit | string): WorkspaceEdit {
+  if (typeof result === "string") throw new Error(result);
+  return result;
+}
+
+function fileOf(edit: WorkspaceEdit, path = "/p/a.py") {
+  const file = edit.files.find((f) => f.kind === "edit" && f.path === path);
+  if (!file || file.kind !== "edit") throw new Error(`no edit for ${path}`);
+  return file;
 }
 
 beforeEach(() => {
   H.nodes = [];
   H.text = "";
+  H.locals = null;
+  H.identifiers = [];
+  H.fileOccurrences = [];
 });
 
 afterEach(() => {
@@ -124,23 +154,16 @@ afterEach(() => {
 
 // ---------------------------------------------------------------------------
 
-/** The items of a signature, failing the test when the list cannot be read. */
-function items(signature: string) {
-  const got = parameterItems(signature);
-  if (typeof got === "string") throw new Error(got);
-  return got;
-}
-
 describe("parameterItems", () => {
   it("reads a plain list", () => {
-    expect(parameterItems("def f(a, b)")).toEqual([
+    expect(items("def f(a, b)")).toEqual([
       { text: "a", from: 6, to: 7 },
       { text: "b", from: 9, to: 10 },
     ]);
   });
 
   it("reads an empty list", () => {
-    expect(parameterItems("def f()")).toEqual([]);
+    expect(items("def f()")).toEqual([]);
   });
 
   it("does not split on a comma inside a default", () => {
@@ -172,24 +195,15 @@ describe("paramName", () => {
 
 describe("appendParameter", () => {
   it("appends after the last parameter", () => {
-    expect(appendParameter("def f(a, b)", "c", "0")).toEqual({
-      text: "def f(a, b, c=0)",
-      parameter: "c=0",
-    });
+    expect(appendParameter("def f(a, b)", "c", "0")).toEqual({ text: "def f(a, b, c=0)", parameter: "c=0" });
   });
 
   it("fills an empty list", () => {
-    expect(appendParameter("def f()", "c", "0")).toEqual({
-      text: "def f(c=0)",
-      parameter: "c=0",
-    });
+    expect(appendParameter("def f()", "c", "0")).toEqual({ text: "def f(c=0)", parameter: "c=0" });
   });
 
   it("keeps the existing annotations", () => {
-    expect(appendParameter("def f(a: int)", "b", "1")).toEqual({
-      text: "def f(a: int, b=1)",
-      parameter: "b=1",
-    });
+    expect(appendParameter("def f(a: int)", "b", "1")).toEqual({ text: "def f(a: int, b=1)", parameter: "b=1" });
   });
 
   it("refuses a duplicate name", () => {
@@ -211,43 +225,16 @@ describe("appendParameter", () => {
   });
 });
 
-describe("signatureAt", () => {
-  it("stops at the colon", async () => {
-    const doc = "def f(a, b):\n    return a\n";
-    fnTree(doc);
-    const v = editor(doc, 5);
-    const got = await signatureAt({ view: v, ctx: docOfFor(v), doc: v.state.doc }, 5);
-    if (typeof got === "string") throw new Error(got);
-    expect(got.text).toBe("def f(a, b)");
-  });
-
-  it("does not stop at a colon inside an annotation", async () => {
-    const doc = "def f(a: int) -> int:\n    return a\n";
-    fnTree(doc);
-    const v = editor(doc, 5);
-    const got = await signatureAt({ view: v, ctx: docOfFor(v), doc: v.state.doc }, 5);
-    if (typeof got === "string") throw new Error(got);
-    expect(got.text).toBe("def f(a: int) -> int");
-  });
-});
-
-function docOfFor(v: EditorView) {
-  const ctx = (v as unknown as { state: { facet: (f: unknown) => () => unknown } }).state;
-  void ctx;
-  // `docOf` reads the `lspDoc` facet; the same object is what the test set up.
-  return { doc: 1, path: "/p/a.py", language: "python", uiMode: null, readOnly: false };
-}
-
-describe("planAppendParameter", () => {
+describe("planChangeSignature — append", () => {
   const DOC = "def f(a, b):\n    return a + b\n";
 
-  it("plans the new signature", async () => {
+  it("replaces the signature", async () => {
     fnTree(DOC);
     const v = editor(DOC, 5);
-    const plan = await planAppendParameter(v, "c", "0");
-    if (typeof plan === "string") throw new Error(plan);
-    expect(plan.text).toBe("def f(a, b, c=0)");
-    expect(plan.parameter).toBe("c=0");
+    const edit = planned(await planChangeSignature(v, { kind: "append", name: "c", def: "0" }, ["/p/a.py"]));
+    const file = fileOf(edit);
+    expect(file.edits).toHaveLength(1);
+    expect(file.edits[0]!.new_text).toBe("def f(a, b, c=0)");
   });
 
   it("refuses a language without a syntax-only implementation", async () => {
@@ -262,7 +249,7 @@ describe("planAppendParameter", () => {
         ],
       }),
     });
-    expect(await planAppendParameter(view, "c", "0")).toBe(
+    expect(await planChangeSignature(view, { kind: "append", name: "c", def: "0" }, ["/p/a.java"])).toBe(
       "Change Signature needs the language server for this language",
     );
   });
@@ -275,27 +262,158 @@ describe("planAppendParameter", () => {
       ["assignment", "x = 1"],
     ]);
     const v = editor(doc, 1);
-    expect(await planAppendParameter(v, "c", "0")).toBe("place the caret on a function declaration");
+    expect(await planChangeSignature(v, { kind: "append", name: "c", def: "0" }, ["/p/a.py"])).toBe(
+      "place the caret on a function declaration",
+    );
   });
 });
 
-describe("appendParameterFallback", () => {
-  const DOC = "def f(a, b):\n    return a + b\n";
+describe("planChangeSignature — rename", () => {
+  const DOC = ["def f(a, b):", "    total = a + b", "    return total", "", "f(1, b=2)", ""].join("\n");
 
-  it("appends the parameter as one undo step", async () => {
-    fnTree(DOC);
-    const v = editor(DOC, 5);
-    expect(await appendParameterFallback(v, "c", "0")).toBe(true);
-    expect(v.state.doc.toString()).toBe("def f(a, b, c=0):\n    return a + b\n");
-    expect(undo(v)).toBe(true);
-    expect(v.state.doc.toString()).toBe(DOC);
+  /** The parameter `a`, its body use, and a positional + keyword call site. */
+  function fixture(source = DOC) {
+    fnTree(source);
+    const paramAt = source.indexOf("(a") + 1;
+    const useAt = source.indexOf("a + b");
+    H.locals = {
+      status: "local",
+      symbol: {
+        name: "a",
+        kind: "parameter",
+        definition: rangeOf(paramAt, paramAt + 1),
+        scope: rangeOf(0, source.length),
+        references: [rangeOf(useAt, useAt + 1)],
+        certain: true,
+        conflicts: [],
+      },
+    } satisfies Locals;
+  }
+
+  it("edits the signature, the body use and the keyword call site", async () => {
+    fixture();
+    H.fileOccurrences = [
+      {
+        path: "/p/a.py",
+        occurrences: [
+          {
+            range: rangeOf(DOC.indexOf("(a") + 1, DOC.indexOf("(a") + 2),
+            kind: "identifier",
+            qualified: false,
+            role: "parameter",
+          },
+          {
+            range: rangeOf(DOC.indexOf("a + b"), DOC.indexOf("a + b") + 1),
+            kind: "identifier",
+            qualified: false,
+            role: "other",
+          },
+          {
+            range: rangeOf(DOC.indexOf("b=2"), DOC.indexOf("b=2") + 1),
+            kind: "identifier",
+            qualified: true,
+            role: "keywordArgument",
+          },
+        ],
+      },
+    ];
+    const v = editor(DOC, DOC.indexOf("(a") + 1);
+    const edit = planned(await planChangeSignature(v, { kind: "rename", from: "a", to: "alpha" }, ["/p/a.py"]));
+    const file = fileOf(edit);
+    const texts = file.edits.map((e) => e.new_text);
+    // The signature keeps `def f(…` and gains the new name; the body follows.
+    expect(texts[0]).toBe("def f(alpha, b)");
+    expect(texts).toContain("alpha");
+    // Three edits: signature (replaced whole), body use, keyword label.
+    expect(file.edits.length).toBe(3);
   });
 
-  it("reports a refusal as handled, leaving the document alone", async () => {
-    fnTree(DOC);
-    const v = editor(DOC, 5);
-    expect(await appendParameterFallback(v, "a", "0")).toBe(true);
-    expect(v.state.doc.toString()).toBe(DOC);
-    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("already has a parameter 'a'"));
+  it("leaves a positional call site alone", async () => {
+    const doc = ["def f(a):", "    return a", "", "f(1)", ""].join("\n");
+    fnTree(doc);
+    const paramAt = doc.indexOf("(a") + 1;
+    H.locals = {
+      status: "local",
+      symbol: {
+        name: "a",
+        kind: "parameter",
+        definition: rangeOf(paramAt, paramAt + 1),
+        scope: rangeOf(0, doc.length),
+        references: [rangeOf(doc.indexOf("return a") + 7, doc.indexOf("return a") + 8)],
+        certain: true,
+        conflicts: [],
+      },
+    } satisfies Locals;
+    // The call site's `1` is not an occurrence of `a`, so nothing is listed for it.
+    H.fileOccurrences = [
+      {
+        path: "/p/a.py",
+        occurrences: [
+          { range: rangeOf(paramAt, paramAt + 1), kind: "identifier", qualified: false, role: "parameter" },
+          {
+            range: rangeOf(doc.indexOf("return a") + 7, doc.indexOf("return a") + 8),
+            kind: "identifier",
+            qualified: false,
+            role: "other",
+          },
+        ],
+      },
+    ];
+    const v = editor(doc, paramAt);
+    const edit = planned(await planChangeSignature(v, { kind: "rename", from: "a", to: "alpha" }, ["/p/a.py"]));
+    // Signature + body use only; the positional call is untouched.
+    expect(fileOf(edit).edits).toHaveLength(2);
+  });
+
+  it("refuses a parameter the declaration does not have", async () => {
+    fixture();
+    const v = editor(DOC, DOC.indexOf("(a") + 1);
+    expect(await planChangeSignature(v, { kind: "rename", from: "zz", to: "alpha" }, ["/p/a.py"])).toBe(
+      "the declaration has no parameter 'zz'",
+    );
+  });
+
+  it("refuses a name already used in the function", async () => {
+    fixture();
+    H.identifiers = [
+      {
+        range: rangeOf(DOC.indexOf("total = a"), DOC.indexOf("total = a") + 5),
+        kind: "identifier",
+        qualified: false,
+        role: "other",
+      },
+    ];
+    const v = editor(DOC, DOC.indexOf("(a") + 1);
+    expect(await planChangeSignature(v, { kind: "rename", from: "a", to: "total" }, ["/p/a.py"])).toBe(
+      "'total' is already used in this function",
+    );
+  });
+
+  it("refuses a name an existing parameter already has", async () => {
+    fixture();
+    const v = editor(DOC, DOC.indexOf("(a") + 1);
+    expect(await planChangeSignature(v, { kind: "rename", from: "a", to: "b" }, ["/p/a.py"])).toBe(
+      "the declaration already has a parameter 'b'",
+    );
+  });
+
+  it("refuses a shadowed parameter", async () => {
+    fixture();
+    H.locals = {
+      status: "local",
+      symbol: {
+        name: "a",
+        kind: "parameter",
+        definition: rangeOf(DOC.indexOf("(a") + 1, DOC.indexOf("(a") + 2),
+        scope: rangeOf(0, DOC.length),
+        references: [],
+        certain: false,
+        conflicts: [],
+      },
+    } satisfies Locals;
+    const v = editor(DOC, DOC.indexOf("(a") + 1);
+    expect(await planChangeSignature(v, { kind: "rename", from: "a", to: "alpha" }, ["/p/a.py"])).toBe(
+      "'a' is shadowed inside the body",
+    );
   });
 });
