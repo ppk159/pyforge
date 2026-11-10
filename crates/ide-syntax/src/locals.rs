@@ -8,7 +8,7 @@
 //! or module level, or in member position, is reported as not local.
 
 use crate::kinds::{Kinds, Redeclaration, locals_source};
-use crate::types::{LocalKind, LocalSymbol, Locals, NotLocalReason};
+use crate::types::{LocalKind, LocalSymbol, Locals, NameResolution, NotLocalReason, RangeLocals};
 use crate::{Ctx, StructureError, StructureResult};
 use ide_core::Pos;
 use std::collections::{HashMap, HashSet};
@@ -484,4 +484,105 @@ fn visible_from(kinds: &Kinds, def: Node, owner: Node) -> usize {
         return cur.end_byte();
     }
     def.start_byte()
+}
+
+/// Distinct names answered in one `locals_in_range` call.
+pub const MAX_RANGE_NAMES: usize = 64;
+
+/// Leaf kinds that never name a variable, so the walk skips them.
+fn names_nothing(kind: &str) -> bool {
+    ["comment", "string", "escape", "content", "fragment", "text", "char"].iter().any(|k| kind.contains(k))
+}
+
+/// Every distinct name `[from, to)` mentions, with the answer `locals` gives.
+///
+/// Refactorings ask about every name of a selection; one request per name costs
+/// an IPC round trip each, which dominates the analysis of a big selection. The
+/// tree is walked once here and `locals` is asked per distinct name, so the
+/// whole range costs one request.
+///
+/// For each name the best answer over its occurrences is kept, ranked
+/// `local` > `notLocal(non-member)` > `notLocal(member)` > `noIdentifier`: the
+/// first occurrence of a name can sit in a member position (`f(tags=tags)`) or
+/// in a docstring while a later one is the variable.
+pub(crate) fn locals_in_range(cx: &Ctx, from: Pos, to: Pos) -> StructureResult<RangeLocals> {
+    let text = cx.text();
+    let start = cx.lines.byte(from);
+    let end = cx.lines.byte(to).min(text.len());
+    let mut out = RangeLocals::default();
+    if start >= end {
+        return Ok(out);
+    }
+
+    // Every name token inside the range, in document order.
+    let mut occurrences: Vec<(String, usize)> = Vec::new();
+    let root = cx.tree.root_node();
+    let mut cursor = root.walk();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if cx.cancel.is_cancelled() {
+            return Err(StructureError::Cancelled);
+        }
+        if node.child_count() == 0 {
+            let (a, b) = (node.start_byte(), node.end_byte());
+            let kind = node.kind();
+            if a >= start && b <= end && b > a && !names_nothing(kind) && !node.is_missing() {
+                let name = &text[a..b];
+                if name.len() <= 128 && !occurrences.iter().any(|(n, _)| n == name) {
+                    occurrences.push((name.to_owned(), a));
+                }
+            }
+        } else {
+            stack.extend(node.children(&mut cursor).filter(|n| n.start_byte() < end && n.end_byte() > start));
+        }
+    }
+    out.occurrences = occurrences.len() as u32;
+
+    for (name, _) in &occurrences {
+        if out.names.len() >= MAX_RANGE_NAMES {
+            out.truncated = true;
+            break;
+        }
+        let mut best: Option<(u8, NameResolution)> = None;
+        for pos in word_offsets(text, name, start, end) {
+            let answer = locals(cx, cx.lines.pos(pos))?;
+            let rank = match &answer {
+                Locals::Local { .. } => 3,
+                Locals::NotLocal { reason, .. } if *reason != NotLocalReason::Member => 2,
+                Locals::NotLocal { .. } => 1,
+                Locals::NoIdentifier => 0,
+            };
+            if best.as_ref().is_none_or(|(r, _)| rank > *r) {
+                best = Some((rank, NameResolution { name: name.clone(), at: cx.lines.pos(pos), locals: answer }));
+            }
+            if rank == 3 || rank == 2 {
+                break;
+            }
+        }
+        // Rank 0 means every occurrence is in a comment or a string: not a name.
+        if let Some((rank, resolution)) = best
+            && rank > 0
+        {
+            out.names.push(resolution);
+        }
+    }
+    Ok(out)
+}
+
+/// Byte offsets of `name` as a whole word in `text[start..end]`, in order.
+fn word_offsets(text: &str, name: &str, start: usize, end: usize) -> Vec<usize> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let Some(region) = text.get(start..end) else { return Vec::new() };
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(i) = region[from..].find(name) {
+        let at = start + from + i;
+        from += i + name.len();
+        let before = text[..at].chars().next_back();
+        let after = text[at + name.len()..].chars().next();
+        if !before.is_some_and(word) && !after.is_some_and(word) {
+            out.push(at);
+        }
+    }
+    out
 }

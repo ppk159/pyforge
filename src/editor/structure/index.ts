@@ -29,6 +29,7 @@ import type {
   NodeAt,
   Pos,
   Range,
+  RangeLocals,
   RequestId,
   StructuralRanges,
   StructureSupport,
@@ -43,6 +44,7 @@ export type {
   Locals,
   LocalSymbol,
   NodeAt,
+  RangeLocals,
   StructuralRanges,
   StructureSupport,
   SyntaxErrors,
@@ -96,6 +98,13 @@ export const structure = {
   /** Local definition + references of the identifier at `pos`, or why it is not a local. */
   locals: (doc: DocId, pos: Pos, opts?: QueryOptions): Promise<Locals> =>
     query((r) => commands.syntaxLocals(doc, pos, r), opts),
+  /**
+   * Every distinct name in the selection with its resolution: one request
+   * instead of one `locals` per name. Names that only occur in comments and
+   * strings are left out.
+   */
+  localsInRange: (doc: DocId, from: Pos, to: Pos, opts?: QueryOptions): Promise<RangeLocals> =>
+    query((r) => commands.syntaxLocalsInRange(doc, from, to, r), opts),
   /** Identifier tokens spelled `name` (comments and string contents excluded). */
   identifiers: (doc: DocId, name: string, opts?: QueryOptions): Promise<IdentifierOccurrence[]> =>
     query((r) => commands.syntaxIdentifiers(doc, name, r), opts),

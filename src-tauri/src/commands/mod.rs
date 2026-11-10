@@ -189,6 +189,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         syntax::syntax_expression_at,
         syntax::syntax_errors,
         syntax::syntax_locals,
+        syntax::syntax_locals_in_range,
         syntax::syntax_identifiers,
         syntax::syntax_identifiers_in_files,
         syntax::syntax_structural_ranges,

@@ -122,6 +122,44 @@ const structureMock = {
     if (!word) return { status: "noIdentifier" as const };
     return { status: "notLocal", name: word, range: rangeOf(off, off + word.length), reason: "unresolved" as const };
   }),
+  /**
+   * The batch call: one request answering every name in the selection, mirroring
+   * `locals_in_range`. It ranks the same way (local > unresolved > member > none)
+   * and drops names whose every occurrence is in a comment or string.
+   */
+  localsInRange: vi.fn(async (_doc: number, from: { line: number; col: number }, to: { line: number; col: number }) => {
+    const lines = H.text.split("\n");
+    const offsetOf = (p: { line: number; col: number }) => {
+      let off = 0;
+      for (let i = 0; i < p.line; i++) off += (lines[i] ?? "").length + 1;
+      return off + p.col;
+    };
+    const a = offsetOf(from);
+    const b = offsetOf(to);
+    const region = H.text.slice(a, b);
+    const RANK = { local: 3, unresolved: 2, member: 1, none: 0 } as const;
+    const best = new Map<string, { rank: number; locals: Locals; at: number }>();
+    for (const [i, m] of [...region.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)].entries()) {
+      const name = m[0]!;
+      const at = a + (m.index ?? 0);
+      const answer = (await structureMock.locals(_doc, posOf(at))) as Locals;
+      const rank =
+        answer.status === "local"
+          ? RANK.local
+          : answer.status === "noIdentifier"
+            ? RANK.none
+            : answer.reason === "member"
+              ? RANK.member
+              : RANK.unresolved;
+      const previous = best.get(name);
+      if (!previous || rank > previous.rank) best.set(name, { rank, locals: answer, at });
+      void i;
+    }
+    const names = [...best]
+      .filter(([, v]) => v.rank > 0)
+      .map(([name, v]) => ({ name, at: posOf(v.at), locals: v.locals }));
+    return { names, occurrences: region.match(/[A-Za-z_][A-Za-z0-9_]*/g)?.length ?? 0, truncated: false };
+  }),
   structuralRanges: vi.fn(async () => {
     throw new Error("unused");
   }),

@@ -13,8 +13,8 @@ use crate::rpc::Dispatcher;
 use super::doc::blocking;
 use ide_core::{CancellationToken, DocId, IdeError, IdeResult, LanguageId, Pos, Range, RequestId};
 use ide_syntax::{
-    ExpressionAt, FileIdentifiers, IdentifierOccurrence, Locals, NodeAt, Snapshot, StructuralRanges, StructureResult,
-    StructureService, StructureSupport, SyntaxErrors,
+    ExpressionAt, FileIdentifiers, IdentifierOccurrence, Locals, NodeAt, RangeLocals, Snapshot, StructuralRanges,
+    StructureResult, StructureService, StructureSupport, SyntaxErrors,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -95,6 +95,19 @@ pub async fn syntax_locals(
     on_doc(host, window, doc, request, move |s, snap, c| s.locals(snap, pos, c)).await
 }
 
+/// Every distinct name in `[from, to)` with its resolution. Refactorings that
+/// examine a whole selection use this instead of one `syntax_locals` per name.
+pub async fn syntax_locals_in_range(
+    host: &Host,
+    window: &str,
+    doc: DocId,
+    from: Pos,
+    to: Pos,
+    request: Option<RequestId>,
+) -> IdeResult<RangeLocals> {
+    on_doc(host, window, doc, request, move |s, snap, c| s.locals_in_range(snap, from, to, c)).await
+}
+
 /// Identifier tokens spelled `name` in a document, excluding comments and strings.
 pub async fn syntax_identifiers(
     host: &Host,
@@ -160,6 +173,9 @@ pub(crate) fn register(d: &mut Dispatcher) {
         "syntax_errors",
         |c| async move { syntax_errors(&c.host, &c.window, c.arg("doc")?, c.arg("request")?).await },
     );
+    d.add("syntax_locals_in_range", |c| async move {
+        syntax_locals_in_range(&c.host, &c.window, c.arg("doc")?, c.arg("from")?, c.arg("to")?, c.arg("request")?).await
+    });
     d.add("syntax_locals", |c| async move {
         syntax_locals(&c.host, &c.window, c.arg("doc")?, c.arg("pos")?, c.arg("request")?).await
     });

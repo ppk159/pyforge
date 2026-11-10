@@ -5,8 +5,8 @@ use ide_core::{DocId, IdeResult, LanguageId, Pos, Range, RequestId};
 #[allow(unused_imports)]
 pub use ide_host::ops::syntax::*;
 use ide_syntax::{
-    ExpressionAt, FileIdentifiers, IdentifierOccurrence, Locals, NodeAt, StructuralRanges, StructureSupport,
-    SyntaxErrors,
+    ExpressionAt, FileIdentifiers, IdentifierOccurrence, Locals, NodeAt, RangeLocals, StructuralRanges,
+    StructureSupport, SyntaxErrors,
 };
 use std::path::PathBuf;
 use tauri::{State, Window};
@@ -70,6 +70,21 @@ pub async fn syntax_locals(
     request: Option<RequestId>,
 ) -> IdeResult<Locals> {
     ide_host::ops::syntax::syntax_locals(&state.host, window.label(), doc, pos, request).await
+}
+
+/// Every distinct name in `[from, to)` with its resolution: one request instead
+/// of one `syntax_locals` per name.
+#[tauri::command]
+#[specta::specta]
+pub async fn syntax_locals_in_range(
+    window: Window,
+    state: State<'_, AppState>,
+    doc: DocId,
+    from: Pos,
+    to: Pos,
+    request: Option<RequestId>,
+) -> IdeResult<RangeLocals> {
+    ide_host::ops::syntax::syntax_locals_in_range(&state.host, window.label(), doc, from, to, request).await
 }
 
 /// Identifier tokens spelled `name` in a document, excluding comments and strings.

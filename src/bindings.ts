@@ -306,6 +306,11 @@ export const commands = {
 	 *  references, or why it is not a local.
 	 */
 	syntaxLocals: (doc: DocId, pos: Pos, request: number | null) => typedError<Locals, IdeError>(__TAURI_INVOKE("syntax_locals", { doc, pos, request })),
+	/**
+	 *  Every distinct name in `[from, to)` with its resolution: one request instead
+	 *  of one `syntax_locals` per name.
+	 */
+	syntaxLocalsInRange: (doc: DocId, from: Pos, to: Pos, request: number | null) => typedError<RangeLocals, IdeError>(__TAURI_INVOKE("syntax_locals_in_range", { doc, from, to, request })),
 	/**  Identifier tokens spelled `name` in a document, excluding comments and strings. */
 	syntaxIdentifiers: (doc: DocId, name: string, request: number | null) => typedError<IdentifierOccurrence[], IdeError>(__TAURI_INVOKE("syntax_identifiers", { doc, name, request })),
 	/**
@@ -6012,6 +6017,14 @@ export type ModuleStructureSettings = {
 	dependencies?: ModuleDependency[],
 };
 
+/**  One distinct name inside a range, with the answer `locals` gives for it. */
+export type NameResolution = {
+	name: string,
+	/**  Offset of the occurrence the answer came from, in document order. */
+	at: Pos,
+	locals: Locals,
+};
+
 export type NavigationFiles = {
 	paths: IpcPath[],
 	indexing: boolean,
@@ -7059,6 +7072,25 @@ export type PythonSettings = {
 export type Range = {
 	start: Pos,
 	end: Pos,
+};
+
+/**
+ *  Result of `locals_in_range`: one entry per distinct name the range mentions.
+ * 
+ *  Refactorings ask about every name of a selection; doing that one request per
+ *  name costs an IPC round trip each, which dominates the analysis of big
+ *  selections. This answers them all from one tree.
+ */
+export type RangeLocals = {
+	/**
+	 *  First occurrence first. Names whose every occurrence is in a comment or
+	 *  a string are left out: they are not variables.
+	 */
+	names: NameResolution[],
+	/**  How many name tokens the walk saw, before merging by spelling. */
+	occurrences: number,
+	/**  The walk stopped at this many names (`MAX_RANGE_NAMES`). */
+	truncated: boolean,
 };
 
 /**  What an interactive rebase does with one commit. */

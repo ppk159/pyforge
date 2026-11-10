@@ -443,3 +443,45 @@ fn haskell() {
     assert_local("haskell", src, "a", 1, 1, &[2, 3]);
     assert_local("haskell", src, "d", 1, 1, &[2]);
 }
+
+/// `locals_in_range` answers every name of a selection in one call.
+#[test]
+fn locals_in_range_covers_the_whole_selection() {
+    let src = r#"def add(self, title, *tags):
+    """Add title with tags."""
+    task = Task(title, tags=set(tags))
+    self._tasks.append(task)
+    return task
+"#;
+    let l = lang("python");
+    let snap = Snapshot::text(&l, src);
+    // Lines 2-3 (0-based): the statements, not the signature or the docstring.
+    let from = Pos::new(2, 0);
+    let to = Pos::new(3, 40);
+    let got = service().locals_in_range(&snap, from, to, &none()).expect("locals_in_range");
+
+    let mut names: Vec<&str> = got.names.iter().map(|n| n.name.as_str()).collect();
+    names.sort_unstable();
+    // `title`, `tags`, `task`, `Task`, `set`, `self`, `_tasks`, `append`.
+    assert!(names.contains(&"title"), "{names:?}");
+    assert!(names.contains(&"tags"), "{names:?}");
+    assert!(names.contains(&"task"), "{names:?}");
+    assert!(names.contains(&"self"), "{names:?}");
+    // Attributes are answered as members, not as locals.
+    let tasks = got.names.iter().find(|n| n.name == "_tasks").expect("_tasks");
+    assert!(matches!(tasks.locals, Locals::NotLocal { reason: NotLocalReason::Member, .. }));
+    // `title` is a parameter: resolved outside the selection, read inside it.
+    let title = got.names.iter().find(|n| n.name == "title").expect("title");
+    assert!(matches!(title.locals, Locals::Local { .. }), "{:?}", title.locals);
+    assert!(!got.truncated);
+}
+
+/// A word that only appears in a docstring is not a name of the selection.
+#[test]
+fn locals_in_range_skips_docstring_words() {
+    let src = "def read(self, size=None):\n    \"\"\"Read size bytes.\"\"\"\n";
+    let l = lang("python");
+    let snap = Snapshot::text(&l, src);
+    let got = service().locals_in_range(&snap, Pos::new(1, 0), Pos::new(1, 26), &none()).expect("locals_in_range");
+    assert!(got.names.iter().all(|n| n.name != "size"), "{:?}", got.names);
+}

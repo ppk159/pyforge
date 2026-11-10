@@ -16,7 +16,6 @@
 import type { ChangeSet, EditorState, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
-import type { Locals, LocalSymbol } from "@/bindings";
 import { structure } from "@/editor/structure";
 import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { docOf } from "@/editor/lsp/lsp";
@@ -31,6 +30,7 @@ import {
   isWriteTarget as isWritten,
   offsetsOf as offsets,
   signatureBinds,
+  posAt,
   spanOf,
   statementAt,
   withinRange as within,
@@ -40,9 +40,6 @@ import { tx } from "@/platform/i18n";
 
 /** Languages this syntax-only implementation covers. */
 const LANGUAGES = new Set(["python"]);
-
-/** Distinct names checked against `locals` in one extraction. */
-const MAX_NAMES = 64;
 
 /** Statements/expressions that leave the enclosing function. */
 const LEAVING = /\b(return|yield|await)\b/;
@@ -162,53 +159,29 @@ interface Flow {
  * the label rather than the variable.
  */
 async function analyze(p: Prepared, from: number, to: number, ownerText: string): Promise<Flow | string> {
-  const text = p.doc.sliceString(from, to);
-  const names = new Map<string, number[]>();
-  for (const m of text.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
-    const name = m[0];
-    if (isKeyword(name) && !IMPLICIT_PARAMS.has(name)) continue;
-    const at = from + m.index;
-    const list = names.get(name);
-    if (list) list.push(at);
-    else names.set(name, [at]);
-    if (names.size >= MAX_NAMES) break;
-  }
+  // One request for the whole selection: the service walks the tree once and
+  // answers every name it finds, instead of one round trip per name.
+  const range = await structure.localsInRange(p.ctx.doc, posAt(p.doc, from), posAt(p.doc, to)).catch(() => null);
+  if (!range) return "the syntax service could not read the selection";
+  if (range.truncated) return "the selection mentions too many different names";
 
   const params: { name: string; at: number }[] = [];
   const written: string[] = [];
-  for (const [name, positions] of names) {
-    let symbol: LocalSymbol | null = null;
-    /** The name occurs at least once outside comments, strings and docstrings. */
-    let realIdentifier = false;
-    for (const pos of positions) {
-      let answer: Locals;
-      try {
-        const line = p.doc.lineAt(pos);
-        answer = await structure.locals(p.ctx.doc, { line: line.number - 1, col: pos - line.from });
-      } catch {
-        continue;
-      }
-      // `noIdentifier` means the word sits in a comment, a string or a
-      // docstring; `member` means it names an attribute (`self.locale_time`).
-      // Neither is a variable, so neither becomes a parameter nor a refusal.
-      if (answer.status === "notLocal" && answer.reason !== "member") realIdentifier = true;
-      if (answer.status === "local") realIdentifier = true;
-      // A member position answers about the member, so the next occurrence of the
-      // same name is tried instead.
-      if (answer.status !== "local" || answer.symbol.name !== name) continue;
-      symbol = answer.symbol;
-      break;
-    }
-    if (!symbol) {
-      // A word that only ever appears in comments and strings is not a variable.
-      if (!realIdentifier) continue;
-      // A module-level or builtin name stays in scope at the new declaration, so
-      // passing it would be wrong; but a local the query missed must be refused.
-      if (signatureBinds(ownerText, name)) {
+  for (const { name, at, locals } of range.names) {
+    // `self` and `cls` are keywords in the shared list but implicit parameters here.
+    if (isKeyword(name) && !IMPLICIT_PARAMS.has(name)) continue;
+    if (locals.status === "noIdentifier") continue;
+    if (locals.status === "notLocal") {
+      // A member name (`self.locale_time`) is not a variable. Anything else is a
+      // module-level name (which stays in scope, so passing it would be wrong), a
+      // builtin, or a local the scope query missed (which must be refused, or the
+      // generated method reads an undefined name).
+      if (locals.reason !== "member" && signatureBinds(ownerText, name)) {
         return `'${name}' is local to this function but the syntax service cannot resolve it here`;
       }
       continue;
     }
+    const symbol = locals.symbol;
     if (!symbol.certain) return `'${name}' is declared more than once here`;
     const inside = within(offsets(p.doc, symbol.definition), from, to);
     const refs = symbol.references.map((r) => offsets(p.doc, r));
@@ -226,7 +199,8 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
         return `the selection assigns '${name}', which is declared outside it`;
       }
     }
-    params.push({ name, at: Math.min(...refsInside.map((r) => r.from)) });
+    // Order by the name's first occurrence, which the service reports.
+    params.push({ name, at: at.line * 100_000 + at.col });
   }
   params.sort((a, b) => a.at - b.at);
   if (written.length > 1) {

@@ -1,6 +1,6 @@
 //! IPC types of the structure service (UTF-16 columns, 0-based lines).
 
-use ide_core::Range;
+use ide_core::{Pos, Range};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -165,6 +165,33 @@ pub struct IdentifierOccurrence {
     /// Member / label position (`obj.name`, `name: value` labels): refers to
     /// a member, not to a variable in scope.
     pub qualified: bool,
+}
+
+/// One distinct name inside a range, with the answer `locals` gives for it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct NameResolution {
+    pub name: String,
+    /// Offset of the occurrence the answer came from, in document order.
+    pub at: Pos,
+    pub locals: Locals,
+}
+
+/// Result of `locals_in_range`: one entry per distinct name the range mentions.
+///
+/// Refactorings ask about every name of a selection; doing that one request per
+/// name costs an IPC round trip each, which dominates the analysis of big
+/// selections. This answers them all from one tree.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RangeLocals {
+    /// First occurrence first. Names whose every occurrence is in a comment or
+    /// a string are left out: they are not variables.
+    pub names: Vec<NameResolution>,
+    /// How many name tokens the walk saw, before merging by spelling.
+    pub occurrences: u32,
+    /// The walk stopped at this many names (`MAX_RANGE_NAMES`).
+    pub truncated: bool,
 }
 
 /// Structural ranges around a position (selection, move / complete statement).

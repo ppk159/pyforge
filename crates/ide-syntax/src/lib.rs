@@ -181,6 +181,18 @@ impl StructureService {
         self.run(snap, cancel, |cx| locals::locals(cx, pos))
     }
 
+    /// Every distinct name in `[from, to)` with its resolution: one request
+    /// instead of one per name. See [`locals::locals_in_range`].
+    pub fn locals_in_range(
+        &self,
+        snap: &Snapshot,
+        from: Pos,
+        to: Pos,
+        cancel: &CancellationToken,
+    ) -> StructureResult<RangeLocals> {
+        self.run(snap, cancel, |cx| locals::locals_in_range(cx, from, to))
+    }
+
     /// Identifier tokens spelled `name`, excluding comments and string
     /// contents (interpolations count as code). Document order.
     pub fn identifiers_named(

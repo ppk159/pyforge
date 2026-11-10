@@ -24,6 +24,8 @@
 | 该语言没有 tree-sitter 语法 | `Extract Method needs the language server here` |
 | 文件只读 | `Cannot perform refactoring: the file is read-only` |
 | 视图里没有文档 | `no document` |
+| 服务读不了选区 | `the syntax service could not read the selection` |
+| 选区里不同名字超过 64 个 | `the selection mentions too many different names` |
 
 ## 二、选区形状
 

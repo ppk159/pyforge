@@ -62,11 +62,7 @@ fn probe_real_python_dataflow() {
         # TODO: stable ordering for equal priorities (by due date)
         return sorted((t for t in self._tasks if not t.done), key=lambda t: -t.priority)
 "#;
-    case(
-        "fixture: generator over self",
-        models,
-        "(t for t in self._tasks if not t.done)",
-    );
+    case("fixture: generator over self", models, "(t for t in self._tasks if not t.done)");
 
     // 2. The fixture's `add()`: validates, builds, appends, returns.
     let add = r#"class TaskList:
@@ -85,11 +81,7 @@ fn probe_real_python_dataflow() {
 
     // 3. Attribute writes: `self._tasks` is not a local, and writing it must not
     //    look like assigning a free variable.
-    case(
-        "fixture: attribute write",
-        add,
-        "self._tasks.append(task)",
-    );
+    case("fixture: attribute write", add, "self._tasks.append(task)");
 
     // 4. A parameter written inside the selection (must be refused).
     let param = r#"def normalize(order):
@@ -160,11 +152,7 @@ fn probe_real_python_dataflow() {
         self.title = title
         self.priority = priority
 "#;
-    case(
-        "self attribute assignment",
-        attr,
-        "self.title = title\n        self.priority = priority",
-    );
+    case("self attribute assignment", attr, "self.title = title\n        self.priority = priority");
 
     // 11. except binding + logging (the as_pattern rule).
     let exc = r#"def parse(path):
@@ -176,11 +164,7 @@ fn probe_real_python_dataflow() {
         return None
     return raw
 "#;
-    case(
-        "with + except as",
-        exc,
-        "with open(path) as fh:\n            raw = fh.read()",
-    );
+    case("with + except as", exc, "with open(path) as fh:\n            raw = fh.read()");
 
     // 12. Walrus in a comprehension inside the selection.
     let walrus = r#"def collect(rows):
