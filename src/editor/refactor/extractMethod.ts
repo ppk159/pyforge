@@ -176,16 +176,33 @@ async function isWritten(p: Prepared, range: Range): Promise<boolean> {
 const IMPLICIT_PARAMS = new Set(["self", "cls"]);
 
 /**
- * Whether the enclosing declaration binds `name`: a parameter of its signature
- * or an assignment target in its body. Used when `locals` cannot resolve a name
- * in the selection — it is then a local the scope query missed, not a module
- * name that stays in scope, and passing it wrongly would raise at runtime.
+ * Whether the enclosing function *signature* binds `name`.
+ *
+ * Used when `locals` cannot resolve a name inside the selection: either the
+ * query missed a parameter (a local, which the extracted method must receive)
+ * or the name is module-level (`Task`, `Priority`, a builtin) and stays in
+ * scope at the new declaration, so passing it would be wrong.
+ *
+ * Only the signature is examined. Scanning the body would misread
+ * `task = Task(...)` as binding `Task`, because `Task` follows the `=`.
  */
-function bindsLocally(ownerText: string, name: string): boolean {
+function signatureBinds(ownerText: string, name: string): boolean {
+  const open = ownerText.indexOf("(");
+  if (open < 0) return false;
+  let depth = 0;
+  let close = open;
+  for (let i = open; i < ownerText.length; i++) {
+    const c = ownerText[i];
+    if (c === "(") depth++;
+    else if (c === ")" && --depth === 0) {
+      close = i;
+      break;
+    }
+  }
+  const signature = ownerText.slice(open + 1, close);
   const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const signature = ownerText.slice(0, ownerText.indexOf(":\n") + 1 || ownerText.length);
-  if (new RegExp(`(^|[^\\w.])${n}\\s*[:=,]`, "m").test(signature)) return true;
-  return new RegExp(`(^|[^\\w.])${n}\\s*=(?!=)`, "m").test(ownerText);
+  // A parameter is the name followed by an annotation, a default, or a separator.
+  return new RegExp(`(^|[^\\w.])${n}\\s*($|[:,)=]|=(?!=))`).test(signature);
 }
 
 interface Flow {
@@ -237,7 +254,7 @@ async function analyze(p: Prepared, from: number, to: number, ownerText: string)
     if (!symbol) {
       // A module-level or builtin name stays in scope at the new declaration, so
       // passing it would be wrong; but a local the query missed must be refused.
-      if (bindsLocally(ownerText, name)) {
+      if (signatureBinds(ownerText, name)) {
         return `'${name}' is local to this function but the syntax service cannot resolve it here`;
       }
       continue;
