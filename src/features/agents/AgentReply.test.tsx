@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 const reply = [
-  "**OpenIDEA v0.1.38 is out!**",
+  "**PyForge v0.1.38 is out!**",
   "",
   "## Highlights",
   "",

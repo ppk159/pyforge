@@ -79,7 +79,7 @@ describe("Vim engine", () => {
     Vim.mapclear();
   });
 
-  it(":action runs OpenIDEA actions by IdeaVim or OpenIDEA id", async () => {
+  it(":action runs PyForge actions by IdeaVim or PyForge id", async () => {
     const view = makeView();
     _handleEx(view, "action GotoDeclaration");
     _handleEx(view, "action code.reformat");

@@ -10,7 +10,7 @@ const status: McpServerStatus = {
   project: "/p",
   url: "http://127.0.0.1:1234/mcp?project=/p",
   token: "secret",
-  stdioCommand: ["/Applications/OpenIDEA.app/Contents/MacOS/openidea", "--mcp-stdio", "--project", "/p"],
+  stdioCommand: ["/Applications/PyForge.app/Contents/MacOS/openidea", "--mcp-stdio", "--project", "/p"],
 };
 
 describe("MCP server settings", () => {

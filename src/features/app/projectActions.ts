@@ -60,7 +60,7 @@ async function exportSettings() {
   const path = await save({
     title: "Export Settings",
     defaultPath: "openidea-settings.json",
-    filters: [{ name: "OpenIDEA settings", extensions: ["json"] }],
+    filters: [{ name: "PyForge settings", extensions: ["json"] }],
   });
   if (!path) return;
   try {
@@ -81,7 +81,7 @@ async function importSettings() {
   const picked = await open({
     title: "Import Settings",
     multiple: false,
-    filters: [{ name: "OpenIDEA or JetBrains settings", extensions: ["json", "zip"] }],
+    filters: [{ name: "PyForge or JetBrains settings", extensions: ["json", "zip"] }],
   });
   const path = Array.isArray(picked) ? picked[0] : picked;
   if (!path) return;

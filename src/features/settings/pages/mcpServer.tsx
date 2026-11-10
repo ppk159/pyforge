@@ -93,7 +93,7 @@ function McpServerEndpoint() {
       <Row
         label="Client configuration"
         stacked
-        hint="The HTTP configuration holds this run's token and stops working when OpenIDEA restarts. The stdio one starts OpenIDEA's executable, which relays to the running IDE."
+        hint="The HTTP configuration holds this run's token and stops working when PyForge restarts. The stdio one starts PyForge's executable, which relays to the running IDE."
       >
         <div className={styles.buttons}>
           <Button size="small" disabled={!http} onClick={() => copy("http", http)}>
@@ -126,7 +126,7 @@ export const MCP_SERVER_PAGE: PageSpec = {
           kind: "toggle",
           key: "mcpServer.enabled",
           label: "Enable MCP server",
-          hint: "Agents can read, edit, and run projects open in OpenIDEA through its built-in tools. Run tools ask for confirmation. The server listens on 127.0.0.1 only and requires a token.",
+          hint: "Agents can read, edit, and run projects open in PyForge through its built-in tools. Run tools ask for confirmation. The server listens on 127.0.0.1 only and requires a token.",
         },
         {
           kind: "custom",

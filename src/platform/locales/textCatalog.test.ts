@@ -107,6 +107,10 @@ const UNTRANSLATED = new Set<string>([
   // Docker run target placeholder values
   "compose.yaml",
   "python:3.12",
+  // Change Signature / Move dialog placeholder values
+  "cache=None",
+  "title -> name",
+  "extra (or extra.py)",
   // Go environment variables and placeholder values
   "CGO",
   "GOPROXY",
@@ -172,7 +176,7 @@ const UNTRANSLATED = new Set<string>([
   "PHP",
   "Python",
   "npm",
-  "OpenIDEA",
+  "PyForge",
   "Oracle",
   "Spring",
   "Spring Boot",

@@ -140,25 +140,25 @@ async function inlineAnything(view: EditorView): Promise<boolean> {
  */
 async function changeSignatureHere(view: EditorView): Promise<boolean> {
   const choice = await chooseItem({
-    title: "Change Signature",
-    items: ["Append a parameter with a default…", "Rename a parameter…"],
-    empty: "No parameter change is supported here",
+    title: tx`Change Signature`,
+    items: [tx`Append a parameter with a default…`, tx`Rename a parameter…`],
+    empty: tx`No parameter change is supported here`,
   });
   if (!choice) return false;
 
   if (choice.startsWith("Append")) {
     const spec = await promptInput({
-      title: "Change Signature",
-      label: "Parameter to append (name=default)",
-      placeholder: "cache=None",
-      okLabel: "Append",
+      title: tx`Change Signature`,
+      label: tx`Parameter to append (name=default)`,
+      placeholder: tx`cache=None`,
+      okLabel: tx`Append`,
       hint: tx`Existing calls keep binding the same parameters, so no call site changes.`,
       validate: (value) => {
         const eq = value.indexOf("=");
-        if (eq <= 0) return "Write name=default";
+        if (eq <= 0) return tx`Write name=default`;
         const name = value.slice(0, eq).trim();
         if (!/^[A-Za-z_]\w*$/.test(name)) return `'${name}' is not a valid parameter name`;
-        if (!value.slice(eq + 1).trim()) return "The parameter needs a default";
+        if (!value.slice(eq + 1).trim()) return tx`The parameter needs a default`;
         return null;
       },
     });
@@ -168,14 +168,14 @@ async function changeSignatureHere(view: EditorView): Promise<boolean> {
   }
 
   const spec = await promptInput({
-    title: "Rename Parameter",
-    label: "Rename parameter (from -> to)",
-    placeholder: "title -> name",
-    okLabel: "Rename",
+    title: tx`Rename Parameter`,
+    label: tx`Rename parameter (from -> to)`,
+    placeholder: tx`title -> name`,
+    okLabel: tx`Rename`,
     hint: tx`Calls that pass the parameter by keyword are updated; positional calls need no change.`,
     validate: (value) => {
       const parts = value.split("->").map((s) => s.trim());
-      if (parts.length !== 2 || !parts[0] || !parts[1]) return "Write from -> to";
+      if (parts.length !== 2 || !parts[0] || !parts[1]) return tx`Write from -> to`;
       if (!/^[A-Za-z_]\w*$/.test(parts[1]!)) return `'${parts[1]}' is not a valid parameter name`;
       return null;
     },
@@ -199,15 +199,15 @@ async function moveHere(view: EditorView): Promise<boolean> {
   const sourcePath = ctx.path.replace(/\\/g, "/");
   const dir = packageOf(sourcePath);
   const target = await promptInput({
-    title: "Move",
-    label: "Destination module in this package",
-    placeholder: "extra (or extra.py)",
-    okLabel: "Move",
+    title: tx`Move`,
+    label: tx`Destination module in this package`,
+    placeholder: tx`extra (or extra.py)`,
+    okLabel: tx`Move`,
     hint: tx`Only a move inside one package is supported without the language server: relative imports keep their depth, and \`from … import …\` is rewritten.`,
     validate: (value) => {
       const name = value.trim().replace(/\.py$/, "");
       if (!/^[A-Za-z_]\w*$/.test(name)) return `'${value}' is not a valid module name`;
-      if (name === "__init__") return "Moving into __init__.py is not supported";
+      if (name === "__init__") return tx`Moving into __init__.py is not supported`;
       return null;
     },
   });

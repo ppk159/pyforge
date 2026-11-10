@@ -32,7 +32,7 @@ const metrics: AppMetrics = {
 describe("perf views", () => {
   it("renders memory details", () => {
     render(<MemoryDetails metrics={metrics} />);
-    const openidea = screen.getByRole("group", { name: "OpenIDEA" });
+    const openidea = screen.getByRole("group", { name: "PyForge" });
     expect(openidea.textContent).toContain("360 MB");
     expect(openidea.textContent).toContain("Web content");
     expect(openidea.textContent).toContain("300 MB");

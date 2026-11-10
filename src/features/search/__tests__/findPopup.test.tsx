@@ -381,7 +381,7 @@ describe("footer, as IDEA", () => {
     expect(useFindPopup.getState().newTab).toBe(false);
   });
 
-  it("keeps OpenIDEA's Replace preview: a diff in place of the code preview", async () => {
+  it("keeps PyForge's Replace preview: a diff in place of the code preview", async () => {
     render(<FindInFilesOverlay />);
     act(() => showFindPopup(false, { query: "order" }));
     expect(screen.queryByRole("checkbox", { name: "Preview" })).not.toBeInTheDocument();

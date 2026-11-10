@@ -412,7 +412,7 @@ function sampleUi(id: string): UiContribution[] {
 
 function samplePlugins(): PluginInfo[] {
   const base = {
-    authors: ["OpenIDEA contributors"],
+    authors: ["PyForge contributors"],
     homepage: null,
     changeNotes: null,
     icon: null,

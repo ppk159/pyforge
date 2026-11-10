@@ -32,7 +32,7 @@ it("explains the Linux PATH step when the user bin is missing from PATH", async 
 });
 
 it("tells users to open a new terminal after installation", async () => {
-  install.mockResolvedValue({ path: "C:/Users/user/OpenIDEA/bin/openidea.cmd", pathDirectory: null });
+  install.mockResolvedValue({ path: "C:/Users/user/PyForge/bin/openidea.cmd", pathDirectory: null });
   await run("app.installCli");
   expect(notify).toHaveBeenCalledWith(
     expect.objectContaining({ body: expect.stringContaining("Open a new terminal") }),

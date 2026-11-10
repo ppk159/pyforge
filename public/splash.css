@@ -48,6 +48,15 @@ body,
   width: 73.2px;
   height: 18.15px;
 }
+/* The wordmark as text (the old one was an outlined path of the previous name). */
+.splash-wordmark-text {
+  width: auto;
+  height: auto;
+  font: 500 15px/1.21 Inter, system-ui, sans-serif;
+  letter-spacing: 0.2px;
+  color: inherit;
+  white-space: nowrap;
+}
 .splash-bar {
   width: var(--splash-bar-width, 120px);
   height: var(--splash-bar-height, 2px);

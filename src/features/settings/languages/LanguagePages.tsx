@@ -458,7 +458,7 @@ export function GradlePage() {
       <Section>
         <Row
           label="Build and run using"
-          hint="Gradle runs a main class as a JavaExec task on its source set's runtime classpath (Gradle's resource processing included). OpenIDEA launches it on the Java language server's classpath."
+          hint="Gradle runs a main class as a JavaExec task on its source set's runtime classpath (Gradle's resource processing included). PyForge launches it on the Java language server's classpath."
         >
           <Select
             value={runUsing || "gradle"}
@@ -466,7 +466,7 @@ export function GradlePage() {
             aria-label="Build and run using"
             options={[
               { value: "gradle", label: "Gradle" },
-              { value: "ide", label: "OpenIDEA" },
+              { value: "ide", label: "PyForge" },
             ]}
           />
         </Row>

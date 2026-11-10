@@ -4,7 +4,7 @@
   const zh = navigator.language.toLowerCase().startsWith("zh");
   const text = zh
     ? {
-        title: "OpenIDEA 无法启动",
+        title: "PyForge 无法启动",
         report: "请复制下方详情，并附在 GitHub 问题中。",
         link: "报告问题",
         copy: "复制详情",
@@ -14,7 +14,7 @@
         timeout: "启动未在 30 秒内完成。",
       }
     : {
-        title: "OpenIDEA could not start",
+        title: "PyForge could not start",
         report: "Copy the details below and include them in a GitHub issue.",
         link: "Report an issue",
         copy: "Copy details",
@@ -53,7 +53,7 @@
       const details = document.createElement("textarea");
       details.readOnly = true;
       details.setAttribute("aria-label", text.details);
-      details.value = `OpenIDEA startup failure\n${navigator.userAgent}\n\n${describe(reason)}`;
+      details.value = `PyForge startup failure\n${navigator.userAgent}\n\n${describe(reason)}`;
       const actions = document.createElement("div");
       actions.className = "boot-error-actions";
       const copy = document.createElement("button");
