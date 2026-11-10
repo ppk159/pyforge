@@ -149,3 +149,47 @@ export function signatureBinds(ownerText: string, name: string): boolean {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|[^\\w.])${escaped}\\s*($|[:,)=]|=(?!=))`).test(signature);
 }
+
+/**
+ * The span of a variable's life that starts at `declaration`: from the offset the
+ * declaration's line ends at (`declaration.to`, already past the line break) to
+ * the next write to the same name, or the end of the scope.
+ *
+ * Inline Variable only had to refuse a variable that is reassigned. What matters
+ * is narrower: whether every use of *this* assignment happens before the next
+ * one. `x = f(); use(x); x = g()` is safe to inline — the first value is only read
+ * before it is replaced — while `x = f(); x = g(); use(x)` is not.
+ */
+export function assignmentWindow(
+  declaration: { from: number; to: number },
+  writes: { from: number; to: number }[],
+  scopeTo: number,
+): { from: number; to: number } {
+  const from = declaration.to;
+  // The next write that starts at or after the declaration's end.
+  const next = writes.filter((w) => w.from >= from).sort((a, b) => a.from - b.from)[0];
+  return { from, to: Math.min(next ? next.from : scopeTo, scopeTo) };
+}
+
+/** Whether `span` lies inside `window`. */
+export function insideWindow(span: Span, window: Span): boolean {
+  return span.from >= window.from && span.to <= window.to;
+}
+
+/**
+ * Whether moving `count` copies of an expression out of its declaration changes
+ * how often it runs.
+ *
+ * An expression with no side effect (`mayRun`) can be duplicated freely. One that
+ * can run something is fine when the copies are adjacent — nothing else runs
+ * between them, so the order of side effects is unchanged — and unsafe otherwise.
+ */
+export function duplicationRunsElsewhere(count: number, mayRun: boolean, uses: Span[], text: string): boolean {
+  if (count <= 1 || !mayRun) return false;
+  // Adjacent: separated only by whitespace or a separator, nothing that runs.
+  for (let i = 1; i < uses.length; i++) {
+    const gap = text.slice(uses[i - 1]!.to, uses[i]!.from);
+    if (!/^[\s,()[\]{}.+\-*/%<>=!&|^~:;]*$/.test(gap)) return true;
+  }
+  return false;
+}

@@ -20,7 +20,17 @@ import { whenSynced, type EditorDocContext } from "@/editor/api";
 import { docOf } from "@/editor/lsp/lsp";
 import { offsetsToRange } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
-import { chainAt, isWriteTarget, offsetsOf, posAt, spanOf, type Span } from "./analysis";
+import {
+  assignmentWindow,
+  chainAt,
+  duplicationRunsElsewhere,
+  insideWindow,
+  isWriteTarget,
+  offsetsOf,
+  posAt,
+  spanOf,
+  type Span,
+} from "./analysis";
 import { tx } from "@/platform/i18n";
 
 /** Languages this syntax-only implementation covers. */
@@ -194,14 +204,16 @@ export async function planInline(view: EditorView): Promise<InlinePlan | string>
 
   const declaration = offsetsOf(p.doc, symbol.definition);
   const uses: Span[] = [];
+  /** Every write to the name, including the declaration. */
+  const writes: Span[] = [declaration];
   for (const ref of symbol.references) {
-    if (await isWriteTarget(p.ctx, ref)) {
-      return `'${symbol.name}' is reassigned; only a variable assigned once can be inlined`;
-    }
     const span = offsetsOf(p.doc, ref);
+    const write = await isWriteTarget(p.ctx, ref);
+    if (write) writes.push(span);
     // A use inside the declaration's own line is part of the initializer
     // (`x = x + 1` reads the previous `x`), which is not this variable.
     if (span.from >= decl.lines.from && span.to <= decl.lines.to) continue;
+    if (write) continue;
     // Reading a local before it is assigned cannot happen in one scope; a use
     // that does is in a nested function that runs later.
     if (span.from < declaration.from) return `'${symbol.name}' is read before it is declared`;
@@ -212,11 +224,22 @@ export async function planInline(view: EditorView): Promise<InlinePlan | string>
   }
   if (!uses.length) return `'${symbol.name}' is never used`;
 
+  // Reassignment is fine as long as every use of *this* assignment happens before
+  // the next write: then inlining cannot change which value a use sees.
+  const scope = spanOf(p.doc, { range: symbol.scope });
+  const window = assignmentWindow(decl.lines, writes, scope.to);
+  const outside = uses.filter((u) => !insideWindow(u, window));
+  if (outside.length) {
+    return `'${symbol.name}' is reassigned before these uses; only a variable assigned once can be inlined`;
+  }
+
   const text = doc.sliceString(decl.init.from, decl.init.to).trim();
   if (!text) return "the declaration has no initializer";
 
-  // Duplicating an expression with a side effect would run it more than once.
-  if (uses.length > 1 && mayRunSomething(decl.initKind, text)) {
+  // Duplicating an expression that runs something is safe only when the copies
+  // are adjacent: nothing else runs between them, so the side effects keep their
+  // order and count. Anything in between could observe or change the difference.
+  if (duplicationRunsElsewhere(uses.length, mayRunSomething(decl.initKind, text), uses, doc.toString())) {
     return `'${symbol.name}' is used ${uses.length} times and its initializer may have side effects`;
   }
 

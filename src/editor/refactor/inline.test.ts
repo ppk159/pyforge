@@ -248,7 +248,7 @@ describe("planInline", () => {
     expect(await planInline(v)).toBe("the variable is a parameter; it has no initializer");
   });
 
-  it("refuses a variable that is reassigned", async () => {
+  it("refuses a variable whose use comes after a reassignment", async () => {
     const src = ["def f():", "    x = 1", "    x = 2", "    return x", ""].join("\n");
     H.text = src;
     const first = src.indexOf("x = 1");
@@ -267,7 +267,40 @@ describe("planInline", () => {
     ]);
     local({ name: "x", def: first, refs: [second, src.indexOf("return x") + 7] });
     const v = editor(src, first + 1);
-    expect(await planInline(v)).toBe("'x' is reassigned; only a variable assigned once can be inlined");
+    expect(await planInline(v)).toBe(
+      "'x' is reassigned before these uses; only a variable assigned once can be inlined",
+    );
+  });
+
+  it("inlines a variable that is reassigned only after its last use", async () => {
+    // `x` is read before the second assignment, and not after it: the first
+    // value can be inlined, and the second assignment is left alone.
+    const src = ["def f():", "    x = 1", "    use(x)", "    x = 2", "    return 0", ""].join("\n");
+    H.text = src;
+    const first = src.indexOf("x = 1");
+    const second = src.indexOf("x = 2");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", "    x = 1\n    use(x)\n    x = 2\n    return 0", 0, "body"],
+      ["expression_statement", "    x = 1"],
+      ["assignment", "x = 1"],
+      ["identifier", "x", 0, "left"],
+      ["integer", "1", 0, "right"],
+      ["expression_statement", "    use(x)"],
+      ["call", "use(x)"],
+      ["identifier", "x", 1],
+      ["expression_statement", "    x = 2"],
+      ["assignment", "x = 2"],
+      ["identifier", "x", 2, "left"],
+    ]);
+    local({ name: "x", def: first, refs: [src.indexOf("use(x)") + 4, second] });
+    const v = editor(src, first + 1);
+    const plan = await planInline(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("1");
+    // Only the use before the reassignment is replaced.
+    expect(plan.uses).toHaveLength(1);
   });
 
   it("refuses duplicating an initializer that may have side effects", async () => {
@@ -290,6 +323,31 @@ describe("planInline", () => {
     });
     const v = editor(src, def + 1);
     expect(await planInline(v)).toBe("'total' is used 2 times and its initializer may have side effects");
+  });
+
+  it("allows a side-effecting initializer whose uses are adjacent", async () => {
+    // Nothing runs between the two uses, so duplicating the call keeps the same
+    // side effects in the same order.
+    const src = ["def f(a):", "    total = load(a)", "    return total + total", ""].join("\n");
+    H.text = src;
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", "    total = load(a)\n    return total + total", 0, "body"],
+      ["expression_statement", "    total = load(a)"],
+      ["assignment", "total = load(a)"],
+      ["identifier", "total", 0, "left"],
+      ["call", "load(a)", 0, "right"],
+    ]);
+    const def = src.indexOf("total = load(a)");
+    const first = src.indexOf("total + total");
+    const second = first + "total + ".length;
+    local({ name: "total", def, refs: [first, second] });
+    const v = editor(src, def + 1);
+    const plan = await planInline(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("load(a)");
+    expect(plan.uses).toHaveLength(2);
   });
 
   it("allows a side-effecting initializer used once", async () => {

@@ -64,11 +64,40 @@ x = y = 1                 ← 链式赋值，拒绝
 
 | 场景 | 拒绝原因 |
 |---|---|
-| 该变量被重新赋值 | `'x' is reassigned; only a variable assigned once can be inlined` |
+| 有使用点落在**下一次赋值之后** | `'x' is reassigned before these uses; only a variable assigned once can be inlined` |
 | 在声明之前被读取 | `'x' is read before it is declared` |
 | 在嵌套函数里被读取 | `'x' is read inside a nested function, which would move when it is evaluated` |
-| 用了多次，且初始化可能带副作用 | `'x' is used 3 times and its initializer may have side effects` |
+| 用了多次、初始化可能带副作用、**且使用点之间隔着别的语句** | `'x' is used 3 times and its initializer may have side effects` |
 | 初始化读的某个名字在使用之前被改过 | `'a' changes between the declaration and the use of 'x'` |
+
+### 「被重新赋值」的实际判定：赋值窗口
+
+不是「被赋值过一次就不行」，而是看**这一次赋值之后、下一次赋值之前**的所有使用点：
+
+```python
+x = 1
+use(x)        ← 在窗口内，可以内联
+x = 2         ← 窗口到此结束
+return x      ← 在窗口外，不属于这次赋值
+```
+
+上面这段是**允许**的：内联后是 `use(1)`，然后 `x = 2`，语义不变。
+
+```python
+x = 1
+x = 2         ← 下一次赋值紧跟着，窗口里没有使用点
+return x
+```
+
+这段也不会因为「有使用点」而拒绝——它被拒的原因是别的（没有可内联的使用点）。
+
+而下面这段**拒绝**，因为 `return x` 落在第二次赋值之后：
+
+```python
+x = 1
+x = 2
+return x      ← 这次赋值不是 `x = 1`，内联 `x = 1` 会改变语义
+```
 
 ### 为什么「嵌套函数里读」要拒绝
 
@@ -92,18 +121,35 @@ a = 5
 return x      # 若内联成 return a + 1，就变成 6
 ```
 
-### 「可能带副作用」的判定
+### 「可能带副作用」的判定：看使用点之间的空隙
 
-只按节点种类判断，不猜：
+先按节点种类判断初始化会不会「跑东西」：
 
-| 初始化 | 多次使用 |
+| 初始化 | 会跑东西吗 |
 |---|---|
-| 名字、属性、下标、字面量、`f""`（无插值） | 允许 |
-| 算术 / 比较 / 逻辑运算、三元、推导式、列表/字典/集合/元组 | 允许 |
-| **函数调用** | **拒绝** |
-| **含插值的 f-string**（`f"{load()}"`） | **拒绝** |
+| 名字、属性、下标、字面量、`f""`（无插值） | 不会 |
+| 算术 / 比较 / 逻辑运算、三元、推导式、列表/字典/集合/元组 | 不会 |
+| **函数调用** | **会** |
+| **含插值的 f-string**（`f"{load()}"`） | **会** |
 
-只用在**一处**时，副作用无关紧要（求值次数不变），所以不再拒绝调用：
+只会跑东西的初始化，在**使用点之间隔着别的语句**时才拒绝：
+
+```python
+total = load(a)
+print(total)          ← 中间有别的语句
+return total          ← 拒绝：load 跑了两次，中间还多了一次 print
+```
+
+如果使用点紧挨着，中间的只有运算符和分隔符，就允许：
+
+```python
+total = load(a)
+return total + total   ← 允许，变成 return load(a) + load(a)
+```
+
+理由：两次调用之间什么都没发生，副作用的次数和顺序都没变。
+
+只用在**一处**时更不用说：
 
 ```python
 rows = load(items)

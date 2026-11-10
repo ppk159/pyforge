@@ -73,7 +73,7 @@ vi.mock("@/editor/structure", () => ({
   },
 }));
 
-const { isWriteTarget } = await import("./analysis");
+const { isWriteTarget, assignmentWindow, insideWindow, duplicationRunsElsewhere } = await import("./analysis");
 
 const ctx = { doc: 1, path: "/p/a.py", language: "python", uiMode: null, readOnly: false } as never;
 
@@ -208,5 +208,84 @@ describe("isWriteTarget", () => {
         ["identifier", "total"],
       ]),
     ).toBe(false);
+  });
+});
+
+describe("assignmentWindow", () => {
+  it("ends at the next write after the declaration", () => {
+    const decl = { from: 13, to: 19 };
+    const next = { from: 34, to: 39 };
+    expect(assignmentWindow(decl, [decl, next], 100)).toEqual({ from: 19, to: 34 });
+  });
+
+  it("runs to the end of the scope when nothing writes again", () => {
+    const decl = { from: 13, to: 19 };
+    expect(assignmentWindow(decl, [decl], 100)).toEqual({ from: 19, to: 100 });
+  });
+
+  it("ignores a write before the declaration", () => {
+    const decl = { from: 13, to: 19 };
+    const earlier = { from: 0, to: 5 };
+    expect(assignmentWindow(decl, [earlier, decl], 100)).toEqual({ from: 19, to: 100 });
+  });
+});
+
+describe("insideWindow", () => {
+  it("accepts a span inside and rejects one past the end", () => {
+    const w = { from: 19, to: 34 };
+    expect(insideWindow({ from: 20, to: 25 }, w)).toBe(true);
+    expect(insideWindow({ from: 35, to: 39 }, w)).toBe(false);
+  });
+});
+
+describe("duplicationRunsElsewhere", () => {
+  const text = "x".repeat(60);
+
+  it("does not object to a single use", () => {
+    expect(duplicationRunsElsewhere(1, true, [{ from: 0, to: 1 }], text)).toBe(false);
+  });
+
+  it("does not object when the initializer cannot run anything", () => {
+    expect(
+      duplicationRunsElsewhere(
+        2,
+        false,
+        [
+          { from: 0, to: 1 },
+          { from: 40, to: 41 },
+        ],
+        text,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts adjacent uses even when the initializer can run", () => {
+    // `total + total`: only an operator between them.
+    expect(
+      duplicationRunsElsewhere(
+        2,
+        true,
+        [
+          { from: 0, to: 5 },
+          { from: 8, to: 13 },
+        ],
+        "total + total",
+      ),
+    ).toBe(false);
+  });
+
+  it("objects when a statement separates the uses", () => {
+    // `a; b`: a `;` is in the allowed set, but a newline plus an identifier is not.
+    expect(
+      duplicationRunsElsewhere(
+        2,
+        true,
+        [
+          { from: 0, to: 5 },
+          { from: 30, to: 35 },
+        ],
+        "total\nprint()\ntotal",
+      ),
+    ).toBe(true);
   });
 });
