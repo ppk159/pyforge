@@ -26,7 +26,7 @@ import { docOf } from "@/editor/lsp/lsp";
 import { offsetsToRange } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
 import { call, commands } from "@/platform/ipc";
-import { chainAt, indentOf, isWriteTarget, offsetsOf, spanOf, type Span } from "./analysis";
+import { chainAt, indentOf, isWriteTarget, offsetsOf, posAt, spanOf, type Span } from "./analysis";
 import { tx } from "@/platform/i18n";
 
 /** Languages this syntax-only implementation covers. */
@@ -248,8 +248,8 @@ export function stripTrailingComment(line: string): string {
 
 /** What a body holds: the declarations before its `return`, and that expression. */
 export interface BodyPlan {
-  /** `name = value` statements before the return, in order. */
-  statements: { span: Span; name: string }[];
+  /** Statements before the return, in order, with their whole text (nested blocks included). */
+  statements: Span[];
   /** The returned expression. */
   ret: Span;
   /** The body's own indentation, to re-indent the statements for the caller. */
@@ -257,14 +257,16 @@ export interface BodyPlan {
 }
 
 /**
- * The body of `fn` as a chain of `name = value` statements ending in one
- * `return <expr>`, or why the body is not that shape.
+ * The statements of a body, and the one `return` they end in.
  *
- * v1 inlined only a body that was a single `return`; this reads the plain shape
- * that comes next — local assignments then a return — which is what most small
- * helpers look like (`_sz = …; _bd = …; return "…".format(…)`). Anything with a
- * branch, a loop, an early `return`, or a docstring is still refused: reproducing
- * control flow in the caller is a different refactoring, not a wider one.
+ * The scan asks the tree about each line that starts a statement rather than
+ * grouping lines by indentation: a compound statement (`if`, `for`, `try`) is one
+ * node with a whole extent, which is what makes a body with a branch movable at
+ * all. A docstring is dropped; it does nothing where it lands.
+ *
+ * Only a body whose single `return` is the last statement is inlined here. More
+ * than one `return` needs the caller's control flow rewritten, which is a
+ * different transformation.
  */
 async function bodyOf(p: Prepared, fn: SyntaxNode): Promise<BodyPlan | string> {
   const fnSpan = spanOf(p.doc, fn);
@@ -278,99 +280,88 @@ async function bodyOf(p: Prepared, fn: SyntaxNode): Promise<BodyPlan | string> {
   if (/\byield\b/.test(bodyText)) return "the declaration is a generator";
   if (/\bawait\b/.test(bodyText)) return "the declaration is a coroutine";
 
-  // The body starts on the line after the signature (or after it, for a one-liner).
   const bodyFrom = fnSpan.from + colon + 1;
-  const lines = bodyText.split("\n");
-  // The indentation every statement of the body shares.
-  const firstLine = lines.find((l) => l.trim() && !l.trim().startsWith("#"));
-  if (!firstLine) return "the declaration returns nothing";
-  const indent = /^[ \t]*/.exec(firstLine)![0];
-  if (!indent && lines.length > 1) return "the declaration is not indented";
+  const bodyEnd = fnSpan.to;
+  // Skip the newline that ends the signature, if the body starts on the next line.
+  const afterColon = p.doc.sliceString(bodyFrom, bodyEnd);
+  const lead = /^[ \t]*\n[ \t]*/.exec(afterColon)?.[0].length ?? /^[ \t]*/.exec(afterColon)?.[0].length ?? 0;
+  const firstLine = p.doc.lineAt(bodyFrom + lead);
+  const indent = /^[ \t]*/.exec(firstLine.text)![0];
+  if (!indent && p.doc.lines > firstLine.number) return "the declaration is not indented";
 
-  // Walk the lines, grouping each indented statement with its continuation lines.
-  // A docstring is skipped: it has no effect when moved, and most helpers open
-  // with one.
-  const groups: { firstLine: number; lastLine: number; head: string }[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const lineIndent = /^[ \t]*/.exec(line)![0];
-    if (lineIndent !== indent) return "the declaration has a nested block";
-    // A line's code ends before a trailing comment; a range covering the comment
-    // would make `nodeAt` answer with the enclosing block.
-    const code = stripTrailingComment(line);
-    const trimmedCode = code.trim();
-    // A docstring (a bare triple-quoted string) is dropped, not moved.
-    const doc = /^("""|''')/.exec(trimmed);
-    if (doc) {
-      const quote = doc[1]!;
-      // Find the closing quote, on this line or a later one.
-      let k = i;
-      let rest = trimmed.slice(quote.length);
-      while (!rest.includes(quote)) {
-        k++;
-        if (k >= lines.length) return "the declaration has an unterminated docstring";
-        rest = lines[k]!;
-      }
-      // Only a string on its own counts; `"""x""" + y` is an expression.
-      const tail = rest.slice(rest.indexOf(quote) + quote.length).trim();
-      if (tail && !tail.startsWith("#")) return "the declaration has a statement this scope cannot move";
-      i = k;
+  const statements: Span[] = [];
+  let line = firstLine.number;
+  const lastLine = p.doc.lineAt(bodyEnd).number;
+  while (line <= lastLine) {
+    const current = p.doc.line(line);
+    // Past the end of the declaration: the body is done.
+    if (current.from >= bodyEnd) break;
+    const code = stripTrailingComment(current.text);
+    const trimmed = code.trim();
+    // Blank lines and comment-only lines start nothing.
+    if (!trimmed || /^#/.test(current.text.trim())) {
+      line++;
       continue;
     }
-    groups.push({ firstLine: i, lastLine: i, head: trimmedCode });
-  }
-  if (!groups.length) return "the declaration returns nothing";
-
-  // Only the plain shape: assignments, then one return, as the last statement.
-  const last = groups[groups.length - 1]!;
-  if (!/^return\b/.test(last.head)) return "the declaration ends without a return";
-  if (groups.length > 1 && /^return\b/.test(groups[0]!.head)) {
-    return "the declaration returns from more than one place";
-  }
-  for (const g of groups.slice(0, -1)) {
-    if (
-      /^(return|yield|raise|assert|del|global|nonlocal|import|from|class|def|with|for|while|if|try|match)\b/.test(
-        g.head,
-      )
-    ) {
-      return "the declaration does more than declare locals and return";
+    const lineIndent = /^[ \t]*/.exec(code)![0];
+    // A statement of the body starts at the body's indent; anything deeper belongs
+    // to a statement already recorded.
+    if (lineIndent !== indent) return "the declaration is not indented";
+    const from = current.from + lineIndent.length;
+    const node = await structure.nodeAt(p.ctx.doc, offsetsToRange(p.doc, from, current.to)).catch(() => null);
+    if (!node) return "a statement of the declaration could not be read";
+    const span = trimSpan(p.doc, spanOf(p.doc, node.node));
+    if (span.to > bodyEnd) return "the declaration has a statement this scope cannot move";
+    // A docstring is a bare string: dropped, not moved.
+    if (/^("""|''')/.test(trimmed)) {
+      line = p.doc.lineAt(span.to).number + 1;
+      continue;
     }
-    if (/[:=]\s*$/.test(g.head)) return "the declaration has a nested block";
+    statements.push(span);
+    line = p.doc.lineAt(span.to).number + 1;
   }
+  if (!statements.length) return "the declaration returns nothing";
 
-  /** Offsets of line `i` of the body, code only, in document coordinates. */
-  const lineSpan = (i: number): Span => {
-    let offset = bodyFrom;
-    for (let k = 0; k < i; k++) offset += (lines[k] ?? "").length + 1;
-    const code = stripTrailingComment(lines[i]!);
-    const lead = code.length - code.replace(/^[ \t]*/, "").length;
-    return { from: offset + lead, to: offset + code.length };
-  };
+  // Exactly one `return`, and it is the last statement: nothing can return early.
+  const found = await returnsIn(p, statements);
+  if (typeof found === "string") return found;
+  if (found.length !== 1) return "the declaration returns from more than one place";
 
-  const statements: { span: Span; name: string }[] = [];
-  for (const g of groups.slice(0, -1)) {
-    const span = lineSpan(g.firstLine);
-    const assigned = /^([A-Za-z_]\w*)\s*=(?!=)/.exec(g.head);
-    // A bare name, a tuple target or an augmented assignment is not this shape.
-    if (!assigned) return "the declaration has a statement this scope cannot move";
-    // The whole line must be one statement: nothing else on it.
-    const node = await structure.nodeAt(p.ctx.doc, offsetsToRange(p.doc, span.from, span.to)).catch(() => null);
-    if (!node) return "a declaration could not be read";
-    const nodeSpan = spanOf(p.doc, node.node);
-    if (nodeSpan.from < span.from || nodeSpan.to > span.to) {
-      return "the declaration has a statement this scope cannot move";
-    }
-    statements.push({ span, name: assigned[1]! });
-  }
+  const last = statements[statements.length - 1]!;
+  if (found[0]!.from < last.from) return "the declaration returns from more than one place";
+  const lastText = stripTrailingComment(p.doc.sliceString(last.from, last.to));
+  if (!/^return\b/.test(lastText)) return "the declaration ends without a return";
 
-  const returnSpan = lineSpan(last.firstLine);
-  const retText = last.head.slice("return".length);
+  const retText = lastText.slice("return".length);
   const retLead = retText.length - retText.replace(/^\s+/, "").length;
   if (!retText.trim()) return "the declaration returns nothing";
-  const ret = { from: returnSpan.from + "return".length + retLead, to: returnSpan.to };
-  return { statements, ret, indent };
+  const ret = { from: last.from + "return".length + retLead, to: last.to };
+  return { statements: statements.slice(0, -1), ret, indent };
+}
+
+/** `span` without surrounding whitespace. */
+function trimSpan(doc: Text, span: Span): Span {
+  let { from, to } = span;
+  while (from < to && /\s/.test(doc.sliceString(from, from + 1))) from++;
+  while (to > from && /\s/.test(doc.sliceString(to - 1, to))) to--;
+  return { from, to };
+}
+
+/** Every `return` inside the given statements, resolved through the tree. */
+async function returnsIn(p: Prepared, statements: Span[]): Promise<Span[] | string> {
+  const out: Span[] = [];
+  for (const statement of statements) {
+    const text = p.doc.sliceString(statement.from, statement.to);
+    for (const m of text.matchAll(/\breturn\b/g)) {
+      const at = statement.from + m.index!;
+      const node = await structure
+        .nodeAt(p.doc === p.doc ? p.ctx.doc : p.ctx.doc, offsetsToRange(p.doc, at, at + 6))
+        .catch(() => null);
+      if (!node || node.node.kind !== "return_statement") continue;
+      out.push(trimSpan(p.doc, spanOf(p.doc, node.node)));
+    }
+  }
+  return out;
 }
 
 /** The declaration of `name` in the open document, from the outline. */
@@ -475,8 +466,21 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
     // put the declarations: there is no enclosing function then.
     const callerFn = enclosingFunctionOf(chain);
     const scope = callerFn ? spanOf(doc, callerFn) : { from: 0, to: doc.length };
-    for (const st of body.statements) {
-      const found = await structure.identifiers(ctx.doc, st.name).catch(() => []);
+    // The names the body binds, in one request: a local whose definition lies
+    // inside the moved text is declared by it.
+    const first = body.statements[0]!;
+    const movedTo = body.ret.to;
+    const inBody = await structure
+      .localsInRange(ctx.doc, posAt(doc, first.from), posAt(doc, movedTo))
+      .catch(() => null);
+    const declared: string[] = [];
+    for (const n of inBody?.names ?? []) {
+      if (n.locals.status !== "local") continue;
+      const def = offsetsOf(doc, n.locals.symbol.definition);
+      if (def.from >= first.from && def.to <= movedTo) declared.push(n.name);
+    }
+    for (const name of declared) {
+      const found = await structure.identifiers(ctx.doc, name).catch(() => []);
       const clashes = found.some((occ) => {
         const span = offsetsOf(doc, occ.range);
         // Inside the callee is the declaration itself; inside the caller is a clash.
@@ -485,7 +489,7 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
       });
       if (!clashes) continue;
       // A fresh name that appears nowhere in the caller.
-      let candidate = `${st.name}_1`;
+      let candidate = `${name}_1`;
       for (let n = 2; n < 100; n++) {
         const used = await structure.identifiers(ctx.doc, candidate).catch(() => []);
         const taken = used.some((occ) => {
@@ -493,10 +497,10 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
           return span.from >= scope.from && span.to <= scope.to;
         });
         if (!taken) break;
-        candidate = `${st.name}_${n}`;
+        candidate = `${name}_${n}`;
       }
-      renamed.push({ from: st.name, to: candidate });
-      substitutions.set(st.name, candidate);
+      renamed.push({ from: name, to: candidate });
+      substitutions.set(name, candidate);
     }
   }
 
@@ -509,7 +513,7 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
       const span = offsetsOf(doc, occ.range);
       const inBody =
         (span.from >= body.ret.from && span.to <= body.ret.to) ||
-        body.statements.some((st) => span.from >= st.span.from && span.to <= st.span.to);
+        body.statements.some((st) => span.from >= st.from && span.to <= st.to);
       if (!inBody || occ.qualified) continue;
       if (await isWriteTarget(ctx, occ.range)) {
         return `the declaration assigns to its parameter '${param.name}'`;
@@ -560,9 +564,15 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
     const indent = indentOf(doc, stmtSpan.from);
     const out: string[] = [];
     for (const st of body.statements) {
-      const stmtText = await rewrite(st.span);
+      const stmtText = await rewrite(st);
       if (!stmtText.ok) return stmtText.why;
-      out.push(indent + stmtText.text);
+      // The body's own indentation is dropped, then the caller's is applied: the
+      // two differ when the call sits at module level, or in deeper nesting.
+      const lines = stmtText.text.split("\n").map((l, i) => {
+        if (i === 0) return l;
+        return body.indent && l.startsWith(body.indent) ? l.slice(body.indent.length) : l;
+      });
+      out.push([indent + lines[0], ...lines.slice(1).map((l) => indent + l)].join("\n"));
     }
     prelude = { at: doc.lineAt(stmtSpan.from).from, text: out.join("\n") + "\n", renamed };
   }

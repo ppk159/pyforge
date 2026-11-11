@@ -25,13 +25,13 @@ _bd = b if b != 0 else 9988
 x = f"{a}-{_bd}-{_sz}"
 ```
 
-| 项 | 说明 |
-|---|---|
-| 参数 | 按实参代入；省略的参数用自己的默认值 |
-| `return 表达式` | 替换调用处 |
-| `return` 前的声明 | **搬到调用语句之前**，按调用处缩进 |
-| docstring | **丢弃而不搬**（移过去没有意义） |
-| 行尾注释 | 丢弃 |
+| 项                | 说明                                 |
+| ----------------- | ------------------------------------ |
+| 参数              | 按实参代入；省略的参数用自己的默认值 |
+| `return 表达式`   | 替换调用处                           |
+| `return` 前的声明 | **搬到调用语句之前**，按调用处缩进   |
+| docstring         | **丢弃而不搬**（移过去没有意义）     |
+| 行尾注释          | 丢弃                                 |
 
 ## 局部变量重名（最关键的正确性）
 
@@ -64,53 +64,80 @@ def caller(v):
 
 ## 一、语言与服务前提
 
-| 条件 | 拒绝原因 |
-|---|---|
-| 语言不是 Python | `Inline Method needs the language server for this language` |
-| 该语言没有 tree-sitter 语法 | `Inline Method needs the language server here` |
-| 文件只读 | `Cannot perform refactoring: the file is read-only` |
-| 视图里没有文档 | `no document` |
+| 条件                        | 拒绝原因                                                    |
+| --------------------------- | ----------------------------------------------------------- |
+| 语言不是 Python             | `Inline Method needs the language server for this language` |
+| 该语言没有 tree-sitter 语法 | `Inline Method needs the language server here`              |
+| 文件只读                    | `Cannot perform refactoring: the file is read-only`         |
+| 视图里没有文档              | `no document`                                               |
 
 ## 二、光标位置
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 光标不在调用上 | `place the caret on a call` |
+| 场景               | 拒绝原因                                   |
+| ------------------ | ------------------------------------------ |
+| 光标不在调用上     | `place the caret on a call`                |
 | 被调的不是裸函数名 | `the call is not to a plain function name` |
-| 调用没有参数列表 | `the call has no argument list` |
+| 调用没有参数列表   | `the call has no argument list`            |
 
 ## 三、被调用的函数
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 不在本文件声明 | `'name' is not declared in this file` |
-| 声明读不出来 | `the declaration could not be read` |
-| 声明没有函数体 | `the declaration has no body` |
-| 声明没有参数列表 | `the declaration has no parameter list` |
-| 参数列表括号不匹配 | `the parameter list is not closed` |
-| 参数名读不出来 | `a parameter name could not be read` |
-| 带 `*args` / `**kwargs` | `the declaration takes *args or **kwargs` |
-| 调用在自己的声明里（递归） | `the call is inside its own declaration` |
+| 场景                       | 拒绝原因                                  |
+| -------------------------- | ----------------------------------------- |
+| 不在本文件声明             | `'name' is not declared in this file`     |
+| 声明读不出来               | `the declaration could not be read`       |
+| 声明没有函数体             | `the declaration has no body`             |
+| 声明没有参数列表           | `the declaration has no parameter list`   |
+| 参数列表括号不匹配         | `the parameter list is not closed`        |
+| 参数名读不出来             | `a parameter name could not be read`      |
+| 带 `*args` / `**kwargs`    | `the declaration takes *args or **kwargs` |
+| 调用在自己的声明里（递归） | `the call is inside its own declaration`  |
 
 ## 四、函数体的形态
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 有装饰器 | `the declaration is decorated` |
-| 是 `async def` | `the declaration is a coroutine` |
-| 含 `yield` | `the declaration is a generator` |
-| 含 `await` | `the declaration is a coroutine` |
-| **有嵌套块**（`if` / `for` / `try` / `with` / 内层 `def`） | `the declaration has a nested block` |
-| 缩进不一致 | `the declaration is not indented` |
-| docstring 没闭合 | `the declaration has an unterminated docstring` |
-| `return` 前有 `raise`/`assert`/`del`/`import` 等 | `the declaration does more than declare locals and return` |
-| `return` 前有本范围处理不了的语句（如元组解包 `a, b = …`、`out.x = …`） | `the declaration has a statement this scope cannot move` |
-| 最后一条语句不是 `return` | `the declaration ends without a return` |
-| 多个 `return` | `the declaration returns from more than one place` |
-| 没有 `return` 或 `return` 后为空 | `the declaration returns nothing` |
-| 给参数赋值 | `the declaration assigns to its parameter 'x'` |
+| 场景                                                                    | 拒绝原因                                                   |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------- |
+| 有装饰器                                                                | `the declaration is decorated`                             |
+| 是 `async def`                                                          | `the declaration is a coroutine`                           |
+| 含 `yield`                                                              | `the declaration is a generator`                           |
+| 含 `await`                                                              | `the declaration is a coroutine`                           |
+| **有嵌套块**（`if` / `for` / `try` / `with` / 内层 `def`）              | `the declaration has a nested block`                       |
+| 缩进不一致                                                              | `the declaration is not indented`                          |
+| docstring 没闭合                                                        | `the declaration has an unterminated docstring`            |
+| `return` 前有 `raise`/`assert`/`del`/`import` 等                        | `the declaration does more than declare locals and return` |
+| `return` 前有本范围处理不了的语句（如元组解包 `a, b = …`、`out.x = …`） | `the declaration has a statement this scope cannot move`   |
+| 最后一条语句不是 `return`                                               | `the declaration ends without a return`                    |
+| 多个 `return`                                                           | `the declaration returns from more than one place`         |
+| 没有 `return` 或 `return` 后为空                                        | `the declaration returns nothing`                          |
+| 给参数赋值                                                              | `the declaration assigns to its parameter 'x'`             |
 
-### 为什么「有嵌套块」要拒绝
+### `if` / `for` / `try` / `with`：整体搬移
+
+语句边界取自语法树，不取自缩进：一个复合语句是**一个**节点，带完整范围。
+
+```python
+def check(x, items):
+    if x < 0:
+        raise ValueError("neg")
+    for i in items:
+        use(i)
+    return x * 2
+```
+
+内联后：
+
+```python
+def caller(a, b):
+    if a < 0:
+        raise ValueError("neg")
+    for i in b:
+        use(i)
+    y = a * 2
+```
+
+搬移的是整段文本，缩进按「先减掉函数体缩进、再加回调用方缩进」重算，
+所以调用点在模块级（缩进 0）或更深一层都成立。
+
+### 为什么「多个 `return`」要拒绝
 
 ```python
 def _type_repr(obj):
@@ -119,8 +146,11 @@ def _type_repr(obj):
     return repr(type(obj))
 ```
 
-把这段搬进调用方意味着**复制整个控制流**，并且要把每个 `return` 改写成对目标的赋值。
-这是「内联带控制流的函数」的另一个量级，不在 v1 内。
+把这段搬进调用方意味着**复制整个控制流**，并且要把每个 `return` 改写成对目标的赋值
+加一次跳出。语法上可以做到（包一层 `while True:` + `break`），前提是没有任何
+`return` 落在函数体自己的循环里；那一条是另一个量级，不在 v1 内。
+
+结论：`if` 分支本身不是拒绝理由，**早返**才是。
 
 ### 为什么「给参数赋值」要拒绝
 
@@ -134,25 +164,25 @@ def f(x):
 
 ## 五、参数与实参
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 调用展开了参数 `f(*xs)` | `the call unpacks its arguments` |
-| 传的实参比形参多 | `the call passes more arguments than the declaration takes` |
-| 同一形参传两次 | `the call passes 'x' twice` |
-| 关键字标签不是形参名 | `the call passes an unknown keyword 'x'` |
-| 实参无法对应到形参 | `the call's arguments could not be matched to the parameters` |
-| 省略的形参没有默认值 | `the call does not pass 'x' and it has no default` |
+| 场景                    | 拒绝原因                                                      |
+| ----------------------- | ------------------------------------------------------------- |
+| 调用展开了参数 `f(*xs)` | `the call unpacks its arguments`                              |
+| 传的实参比形参多        | `the call passes more arguments than the declaration takes`   |
+| 同一形参传两次          | `the call passes 'x' twice`                                   |
+| 关键字标签不是形参名    | `the call passes an unknown keyword 'x'`                      |
+| 实参无法对应到形参      | `the call's arguments could not be matched to the parameters` |
+| 省略的形参没有默认值    | `the call does not pass 'x' and it has no default`            |
 
 ## 六、调用出现的位置
 
 函数体只有一条 `return` 时，调用可以出现在任何表达式位置（直接替换成表达式）。
 **函数体有声明时**，调用必须是：
 
-| 位置 | 允许 |
-|---|---|
-| `x = f(...)`（赋值右侧整块） | ✅ |
-| `f(...)` 单独一行 | ✅ |
-| `return f(...)` | ✅ |
+| 位置                                         | 允许                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------- |
+| `x = f(...)`（赋值右侧整块）                 | ✅                                                                        |
+| `f(...)` 单独一行                            | ✅                                                                        |
+| `return f(...)`                              | ✅                                                                        |
 | `y = f(...) + 1`、`g(f(...))`、`f(...).attr` | ❌ `the call is part of an expression and its declaration has statements` |
 
 因为多行声明塞不进一个表达式。
@@ -161,58 +191,66 @@ def f(x):
 
 只有单表达式体才需要考虑优先级：
 
-| 调用位置 | 是否包括号 |
-|---|---|
-| `y = f(a)`（赋值右侧整块） | 否 |
-| `return f(a)` | 否 |
-| `g(f(a))`（实参） | 否 |
-| `y = f(a) + 1` | **是** |
-| `y = f(a).attr` | **是** |
+| 调用位置                   | 是否包括号 |
+| -------------------------- | ---------- |
+| `y = f(a)`（赋值右侧整块） | 否         |
+| `return f(a)`              | 否         |
+| `g(f(a))`（实参）          | 否         |
+| `y = f(a) + 1`             | **是**     |
+| `y = f(a).attr`            | **是**     |
 
 有声明时，调用必然在语句位置，`wrap` 总是 false。
 
 ## 八、实测覆盖率
 
-CPython 标准库 20 个模块、52 个「本文件函数被调用」的位置：
+CPython 标准库 13 个模块、175 个「本文件函数被调用」的位置：
 
-| 版本 | 成功 | 原因 |
-|---|---|---|
-| 只支持单 `return` | 3/52 = 5.8% | — |
-| 支持 `return` 前有声明 | 6/52 = 11.5% | 见下方四轮修复 |
+| 版本                                            | 成功           | 原因                  |
+| ----------------------------------------------- | -------------- | --------------------- |
+| 只支持单 `return`                               | 3/52 = 5.8%    | —                     |
+| 支持 `return` 前有声明                          | 6/52 = 11.5%   | 见下方四轮修复        |
+| 语句边界取自语法树（`if`/`for`/`try` 整体搬移） | 20/175 = 11.4% | 样本变大 3.4 倍，见下 |
+
+后两行不可直接相比：第二行是 52 个位置的小样本，第三行是同一批模块的更大样本。
+可比的量是拒绝分布——「有嵌套块」从 21 个降到 **0**，全部改判为更准确的原因。
 
 四轮修复过程中暴露的真缺陷：
 
-| # | 缺陷 | 后果 |
-|---|---|---|
-| 1 | `vrtl == (2**31-1)` 被判成「给参数赋值」 | 误拒（只看后 2 个字符，`==` 被看成 `=`）→ 改用 `isWriteTarget` |
-| 2 | 多行 docstring 被当成「无法移动的语句」 | 误拒（`_aix_bos_rte` 这类函数全部中招） |
-| 3 | 行尾注释让 `nodeAt` 返回整个 block | 误拒（`out = ... # type: ignore`） |
+| #   | 缺陷                                     | 后果                                                           |
+| --- | ---------------------------------------- | -------------------------------------------------------------- |
+| 1   | `vrtl == (2**31-1)` 被判成「给参数赋值」 | 误拒（只看后 2 个字符，`==` 被看成 `=`）→ 改用 `isWriteTarget` |
+| 2   | 多行 docstring 被当成「无法移动的语句」  | 误拒（`_aix_bos_rte` 这类函数全部中招）                        |
+| 3   | 行尾注释让 `nodeAt` 返回整个 block       | 误拒（`out = ... # type: ignore`）                             |
+| 4   | 按缩进分组，导致复合语句被判「有嵌套块」 | 误拒 21 个 → 改为逐行问语法树取节点完整范围                    |
 
-**最终拒绝分布（52 个）**：
+**最终拒绝分布（175 个）**：
 
-| 次数 | 原因 |
-|---|---|
-| 21 | 有嵌套块（`if`/`for`/`try`）——真实的控制流 |
-| 4 | 带 `*args` |
-| 4 | 生成器 |
-| 2 | 无法移动的语句（元组解包等） |
-| 2 | 没有 `return` |
-| 11 | 不在本文件声明 |
-| 2 | 调用在表达式里且有声明 |
-| ~6 | 其他 |
+| 次数 | 原因                                |
+| ---- | ----------------------------------- |
+| 49   | 多个 `return`（早返）——真实的控制流 |
+| 17   | 带 `*args`/`**kwargs`               |
+| 14   | 结尾不是 `return`                   |
+| 10   | 生成器                              |
+| 33   | 不在本文件声明                      |
+| 6    | 调用在表达式里且有声明              |
+| 4    | 缩进不一致（续行、`match` 等）      |
 
-**结论：真实瓶颈是控制流（21/52），不是「`return` 前有语句」。**
-把「`return` 前有声明」做完只从 5.8% 提到 11.5%，因为标准库的小函数大多带分支。
-下一步要提升，必须做「内联带控制流的函数」，那是另一个量级。
+**结论：把「嵌套块」做完只消除了 21 个误拒，成功率没动——因为同一个函数
+通常有多个 `return`。真正的瓶颈是早返（49/175）。**
+
+下一步要提升，必须把每个 `return X` 改写成「赋值 + 跳出」，即包一层
+`while True:`。这一点已用脚本在语法树上核算过：16 个「嵌套块」函数里，
+6 个可直接原样复制（单 `return` 在末尾），8 个可用 `while True:` 包装，
+只有 2 个因 `return` 落在函数体自己的循环里而需要结果标志位。
 
 ## 九、证据
 
-| 结论 | 出处 |
-|---|---|
-| 纯函数（参数/实参/括号） | `src/editor/refactor/inlineFunction.test.ts` |
-| 声明搬移 + 重名 | 同上（含「不覆盖调用方变量」的端到端用例） |
-| docstring 丢弃 | 同上 |
-| 真机端到端 | `fixtures/python-app` 临时探针（验证后已删除） |
+| 结论                     | 出处                                           |
+| ------------------------ | ---------------------------------------------- |
+| 纯函数（参数/实参/括号） | `src/editor/refactor/inlineFunction.test.ts`   |
+| 声明搬移 + 重名          | 同上（含「不覆盖调用方变量」的端到端用例）     |
+| docstring 丢弃           | 同上                                           |
+| 真机端到端               | `fixtures/python-app` 临时探针（验证后已删除） |
 
 真机实测：
 
@@ -235,10 +273,10 @@ x = tag(a, b)          ← 内联
 
 ## 十、尚未实现
 
-| IDEA 有、这里没有 | 为什么难 |
-|---|---|
-| 带控制流的函数体 | 要把 `if`/`for`/`try` 复制到调用方，并把每个 `return` 改写成赋值 |
-| 多个 `return` | 同上，且需要引入"结果"变量和标记 |
-| 跨文件内联 | 需要读另一个文档并处理 import |
-| `obj.method()` 形式 | 需要 `self` 绑定和类层次分析 |
-| 参数被赋值 | 需要引入临时变量保存实参 |
+| IDEA 有、这里没有   | 为什么难                                                         |
+| ------------------- | ---------------------------------------------------------------- |
+| 带控制流的函数体    | 要把 `if`/`for`/`try` 复制到调用方，并把每个 `return` 改写成赋值 |
+| 多个 `return`       | 同上，且需要引入"结果"变量和标记                                 |
+| 跨文件内联          | 需要读另一个文档并处理 import                                    |
+| `obj.method()` 形式 | 需要 `self` 绑定和类层次分析                                     |
+| 参数被赋值          | 需要引入临时变量保存实参                                         |

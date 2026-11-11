@@ -89,9 +89,37 @@ const structureMock = {
     return out;
   }),
   locals: vi.fn(async () => ({ status: "noIdentifier" as const })),
-  localsInRange: vi.fn(async () => ({ names: [], occurrences: 0, truncated: false })),
-  expressionAt: vi.fn(async () => {
-    throw new Error("unused");
+  /**
+   * The names the body declares. The real service answers from the tree; here a
+   * fixture line `name = ...` stands for the declaration the tests mean.
+   */
+  localsInRange: vi.fn(async (_doc: number, from: { line: number; col: number }, to: { line: number; col: number }) => {
+    const lines = H.text.split("\n");
+    const names: { name: string; at: { line: number; col: number }; locals: unknown }[] = [];
+    for (let i = from.line; i <= to.line && i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      const m = /^\s*([A-Za-z_]\w*)\s*=(?!=)/.exec(line);
+      if (!m) continue;
+      const name = m[1]!;
+      const col = line.indexOf(name);
+      names.push({
+        name,
+        at: { line: i, col },
+        locals: {
+          status: "local",
+          symbol: {
+            name,
+            kind: "var",
+            definition: { start: { line: i, col }, end: { line: i, col: col + name.length } },
+            scope: { start: { line: 0, col: 0 }, end: { line: lines.length - 1, col: 0 } },
+            references: [],
+            certain: true,
+            conflicts: [],
+          },
+        },
+      });
+    }
+    return { names, occurrences: names.length, truncated: false };
   }),
   syntaxErrors: vi.fn(async () => ({ errors: [], truncated: false })),
   structuralRanges: vi.fn(async () => {
@@ -418,6 +446,7 @@ describe("planInlineFunction", () => {
         0,
         "body",
       ],
+      ["expression_statement", '    """Return the tag.\n\n    More detail here.\n    """'],
       ["expression_statement", "    _sz = 64"],
       ["assignment", "_sz = 64"],
       ["return_statement", "    return v + _sz"],
@@ -434,19 +463,68 @@ describe("planInlineFunction", () => {
     expect(plan.text).toBe("a + _sz");
   });
 
-  it("refuses a body with a branch", async () => {
+  it("moves a body that branches, keeping the branch in the caller", async () => {
+    // A guard clause and a loop are one node each: the whole extent moves, so a
+    // body is not limited to a run of plain assignments.
+    const src = [
+      "def check(x, items):",
+      "    if x < 0:",
+      '        raise ValueError("neg")',
+      "    for i in items:",
+      "        use(i)",
+      "    return x * 2",
+      "",
+      "y = check(a, b)",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("check");
+    const body =
+      '    if x < 0:\n        raise ValueError("neg")\n    for i in items:\n        use(i)\n    return x * 2';
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def check(x, items):\n" + body],
+      ["block", body, 0, "body"],
+      ["if_statement", '    if x < 0:\n        raise ValueError("neg")'],
+      ["block", '        raise ValueError("neg")'],
+      ["raise_statement", '        raise ValueError("neg")'],
+      ["for_statement", "    for i in items:\n        use(i)"],
+      ["block", "        use(i)"],
+      ["expression_statement", "        use(i)"],
+      ["call", "use(i)"],
+      ["return_statement", "    return x * 2"],
+      ["assignment", "y = check(a, b)"],
+      ["call", "check(a, b)", 0, "right"],
+      ["identifier", "check", 0, "function"],
+      ["argument_list", "(a, b)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("check(a, b)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("a * 2");
+    expect(plan.prelude!.text).toBe('if a < 0:\n    raise ValueError("neg")\nfor i in b:\n    use(i)\n');
+  });
+
+  it("refuses a body that returns from more than one place", async () => {
     const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
     H.text = src;
     outlineOf("f");
     tree([
       ["module", src.trimEnd()],
       ["function_definition", "def f(x):\n    if x:\n        return 1\n    return 0"],
+      ["block", "    if x:\n        return 1\n    return 0", 0, "body"],
+      ["if_statement", "    if x:\n        return 1"],
+      ["block", "        return 1"],
+      ["return_statement", "        return 1"],
+      ["return_statement", "    return 0"],
       ["call", "f(a)", 0, "right"],
       ["identifier", "f", 0, "function"],
       ["argument_list", "(a)", 0, "arguments"],
     ]);
     const v = editor(src, src.indexOf("f(a)") + 1);
-    expect(await planInlineFunction(v)).toBe("the declaration has a nested block");
+    // The branch itself is movable; two returns need the caller's control flow
+    // rewritten, which this path does not do.
+    expect(await planInlineFunction(v)).toBe("the declaration returns from more than one place");
   });
 
   it("refuses a generator, a coroutine and a decorated function", async () => {
@@ -653,12 +731,17 @@ describe("inlineFunctionFallback", () => {
   });
 
   it("reports a refusal as handled, leaving the document alone", async () => {
-    const src = ["def f(x):", "    total = x", "    return total", "", "y = f(a)", ""].join("\n");
+    const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
     H.text = src;
     outlineOf("f");
     tree([
       ["module", src.trimEnd()],
-      ["function_definition", "def f(x):\n    total = x\n    return total"],
+      ["function_definition", "def f(x):\n    if x:\n        return 1\n    return 0"],
+      ["block", "    if x:\n        return 1\n    return 0", 0, "body"],
+      ["if_statement", "    if x:\n        return 1"],
+      ["block", "        return 1"],
+      ["return_statement", "        return 1"],
+      ["return_statement", "    return 0"],
       ["call", "f(a)", 0, "right"],
       ["identifier", "f", 0, "function"],
       ["argument_list", "(a)", 0, "arguments"],
@@ -666,6 +749,6 @@ describe("inlineFunctionFallback", () => {
     const v = editor(src, src.indexOf("f(a)") + 1);
     expect(await inlineFunctionFallback(v)).toBe(true);
     expect(v.state.doc.toString()).toBe(src);
-    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("has a statement this scope cannot move"));
+    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("returns from more than one place"));
   });
 });
