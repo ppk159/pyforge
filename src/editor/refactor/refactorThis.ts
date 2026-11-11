@@ -217,6 +217,9 @@ async function moveHere(view: EditorView): Promise<boolean> {
   return moveFallback(view, { path: `${dir}/${module}.py` });
 }
 
+/** Refactorings that rewrite one construct as another, with no server and no dialog. */
+const CONVERSIONS: ReadonlySet<RefactoringId> = new Set(["comprehensionToLoop", "loopToComprehension"]);
+
 const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Promise<boolean>>> = {
   changeSignature: changeSignatureHere,
   extractMethod: extractMethodFallback,
@@ -367,6 +370,9 @@ export function refactorThisItems(
     else if (r.id === "safeDelete" && facts.symbol && !docOf(view)?.readOnly) go = () => run.safeDelete(view);
     else if (HIERARCHY_REFACTORINGS.has(r.id) && facts.hierarchy && serverUsable && run.hierarchy)
       go = () => run.hierarchy!(view, r.id === "pullMembersUp" ? "pullUp" : "pushDown");
+    // A conversion has nothing for the server to answer and nothing to ask: it
+    // either rewrites the construct under the caret or says why it cannot.
+    else if (CONVERSIONS.has(r.id) && docOf(view)?.language === "python") go = () => void runRefactoring(view, r.id);
     else if (INTRODUCE[r.id] && facts.expression && !serverUsable)
       go = () => introduceFallback(view, INTRODUCE[r.id]!, answer.status === "notReady" ? "notReady" : "error");
     if (!go) continue;
