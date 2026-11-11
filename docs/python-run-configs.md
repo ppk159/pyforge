@@ -1,7 +1,7 @@
 # Python 运行配置（Python / Flask Server）
 
-适用于 `src/features/run/pythonTypes.ts` 与 `src/features/run/flaskTypes.ts`。
-这两个类型让 Python 项目和框架项目按 PyCharm 的方式配置运行与调试；
+适用于 `src/features/run/` 下的 `pythonTypes.ts`、`flaskTypes.ts`、`fastapiTypes.ts`。
+这三个类型让 Python 项目和框架项目按 PyCharm 的方式配置运行与调试；
 在此之前 Python 只能用通用的 `Program` 类型，写成一个可执行文件加一串参数。
 
 ## 一、两个类型
@@ -74,6 +74,31 @@ FastAPI 用 **Python** 类型的模块模式配：`Module name = uvicorn`，
 | ----------------- | ---------------------------------------- |
 | `development`     | `FLASK_ENV=development`、`FLASK_DEBUG=1` |
 | `production`      | `FLASK_ENV=production`（不开调试器）     |
+
+## 三点五、FastAPI Server
+
+uvicorn 的目标是**位置参数**，而且只接受点分模块——
+`uvicorn app.py:app` 会 `ModuleNotFoundError`，这一点和 Flask 收文件路径不同。
+所以表单把它拆成三个字段：
+
+| 字段                  | 变成                                             |
+| --------------------- | ------------------------------------------------ |
+| Module                | `<模块>`（`webapp.fastapi_app`）                 |
+| Application           | `<变量>`（默认 `app`）                           |
+| Application directory | `--app-dir <目录>`（`src/` 布局用）              |
+| Additional options    | 目标之后的参数（`--host`、`--port`、`--reload`） |
+
+```
+python -m uvicorn --app-dir src webapp.fastapi_app:app --port 8000
+```
+
+`--app-dir` 是 uvicorn 自己的选项，所以排在目标**之前**。
+
+### 读回命令行时的一个陷阱
+
+「target 是第一个不以 `-` 开头的参数」这条规则是错的：`--port 8000` 里的 `8000` 会被当成
+target。所以按形状识别（`^[A-Za-z_][\w.]*(:[\w.()]+)?$`），没有 target 的 uvicorn 命令行
+直接拒绝，而不是把端口号读成模块名。
 
 ## 四、PYTHONPATH 的两个开关
 
