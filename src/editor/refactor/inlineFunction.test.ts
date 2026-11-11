@@ -151,12 +151,14 @@ const {
   isCallUnderCaret,
   parametersOf,
   argumentsOf,
+  bindArguments,
   parseParam,
+  requote,
   topLevelEquals,
   splitTopLevel,
   isAtomText,
 } = await import("./inlineFunction");
-import type { Param } from "./inlineFunction";
+import type { CallArgs, Param } from "./inlineFunction";
 
 // --- editor -------------------------------------------------------------------
 
@@ -236,35 +238,126 @@ describe("helpers", () => {
   });
 
   it("parses the parameter shapes Python allows", () => {
-    expect(parseParam("a")).toEqual({ name: "a", default: null, splat: false });
-    expect(parseParam("a: int")).toEqual({ name: "a", default: null, splat: false });
-    expect(parseParam("b=2")).toEqual({ name: "b", default: "2", splat: false });
-    expect(parseParam("b: int = 2")).toEqual({ name: "b", default: "2", splat: false });
-    expect(parseParam("*args")).toEqual({ name: "args", default: null, splat: true });
-    expect(parseParam("**kw")).toEqual({ name: "kw", default: null, splat: true });
+    expect(parseParam("a")).toEqual({ name: "a", default: null, kind: "positional", keywordOnly: false });
+    expect(parseParam("a: int")).toEqual({ name: "a", default: null, kind: "positional", keywordOnly: false });
+    expect(parseParam("b=2")).toEqual({ name: "b", default: "2", kind: "positional", keywordOnly: false });
+    expect(parseParam("b: int = 2")).toEqual({ name: "b", default: "2", kind: "positional", keywordOnly: false });
+    expect(parseParam("*args")).toEqual({ name: "args", default: null, kind: "varargs", keywordOnly: true });
+    expect(parseParam("**kw")).toEqual({ name: "kw", default: null, kind: "kwargs", keywordOnly: true });
+    // A bare `*` names nothing: it only starts the keyword-only section.
+    expect(parseParam("*")).toEqual({
+      name: "",
+      default: null,
+      kind: "positional",
+      keywordOnly: true,
+      separator: true,
+    });
   });
 
   it("reads a parameter list", () => {
     expect(parametersOf("def f(a, b=2):")).toEqual([
-      { name: "a", default: null, splat: false },
-      { name: "b", default: "2", splat: false },
+      { name: "a", default: null, kind: "positional", keywordOnly: false },
+      { name: "b", default: "2", kind: "positional", keywordOnly: false },
     ]);
     expect(parametersOf("def f():")).toEqual([]);
-    expect(parametersOf("def f(a, *rest):")).toBe("the declaration takes *args or **kwargs");
+    expect(parametersOf("def f(a, *rest):")).toEqual([
+      { name: "a", default: null, kind: "positional", keywordOnly: false },
+      { name: "rest", default: null, kind: "varargs", keywordOnly: true },
+    ]);
   });
 
-  it("matches arguments to parameters", () => {
-    const params = parametersOf("def f(a, b):") as Param[];
-    expect(argumentsOf("f(1, 2)", params)).toEqual([
-      { name: "a", text: "1" },
-      { name: "b", text: "2" },
+  it("makes everything after a `*` keyword-only", () => {
+    expect(parametersOf("def f(a, *, b):")).toEqual([
+      { name: "a", default: null, kind: "positional", keywordOnly: false },
+      { name: "", default: null, kind: "positional", keywordOnly: true, separator: true },
+      { name: "b", default: null, kind: "positional", keywordOnly: true },
     ]);
-    expect(argumentsOf("f(b=2, a=1)", params)).toEqual([
-      { name: "b", text: "2" },
-      { name: "a", text: "1" },
+    expect(parametersOf("def f(*rest, b=1):")).toEqual([
+      { name: "rest", default: null, kind: "varargs", keywordOnly: true },
+      { name: "b", default: "1", kind: "positional", keywordOnly: true },
     ]);
-    expect(argumentsOf("f(1, 2, 3)", params)).toBe("the call passes more arguments than the declaration takes");
-    expect(argumentsOf("f(*xs)", params)).toBe("the call unpacks its arguments");
+  });
+
+  it("reads a call's arguments as written", () => {
+    expect(argumentsOf("f(1, 2)")).toEqual({ positional: ["1", "2"], keyword: [], spread: null });
+    expect(argumentsOf("f(b=2, a=1)")).toEqual({
+      positional: [],
+      keyword: [
+        { name: "b", value: "2" },
+        { name: "a", value: "1" },
+      ],
+      spread: null,
+    });
+    expect(argumentsOf("f(*xs)")).toEqual({ positional: [], keyword: [], spread: "*xs" });
+    expect(argumentsOf("f(**d)")).toEqual({ positional: [], keyword: [], spread: "**d" });
+    expect(argumentsOf("f()")).toEqual({ positional: [], keyword: [], spread: null });
+    // Python allows no positional argument after a keyword one.
+    expect(argumentsOf("f(a=1, 2)")).toBe("the call's arguments could not be matched to the parameters");
+  });
+
+  it("fills the parameters from the arguments", () => {
+    const of = (signature: string, call: string) =>
+      bindArguments(parametersOf(signature) as Param[], argumentsOf(call) as CallArgs);
+    expect(of("def f(a, b):", "f(1, 2)")).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "b", text: "2", asLocal: false },
+    ]);
+    expect(of("def f(a, b):", "f(b=2, a=1)")).toEqual([
+      { name: "b", text: "2", asLocal: false },
+      { name: "a", text: "1", asLocal: false },
+    ]);
+    expect(of("def f(a, b=2):", "f(1)")).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "b", text: "2", asLocal: false },
+    ]);
+    expect(of("def f(a, b):", "f(1, 2, 3)")).toBe("the call passes more arguments than the declaration takes");
+    expect(of("def f(a):", "f(*xs)")).toBe("the call unpacks its arguments");
+    expect(of("def f(a):", "f(1, a=2)")).toBe("the call passes 'a' twice");
+    expect(of("def f(a):", "f(b=2)")).toBe("the call passes an unknown keyword 'b'");
+    expect(of("def f(a, b):", "f(1)")).toBe("the call does not pass 'b' and it has no default");
+  });
+
+  it("collects the extra arguments into *args and the stray keywords into **kwargs", () => {
+    const of = (signature: string, call: string) =>
+      bindArguments(parametersOf(signature) as Param[], argumentsOf(call) as CallArgs);
+    // The tuple a `*args` parameter holds is what the call passed, not the
+    // arguments as expressions: it is a value the caller would not otherwise have.
+    expect(of("def f(a, *rest):", "f(1, 2, 3)")).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "rest", text: "(2, 3)", asLocal: true },
+    ]);
+    // `(x,)` for one value: a bare `(x)` is not a tuple.
+    expect(of("def f(*rest):", "f(1)")).toEqual([{ name: "rest", text: "(1,)", asLocal: true }]);
+    expect(of("def f(*rest):", "f()")).toEqual([{ name: "rest", text: "()", asLocal: true }]);
+    expect(of("def f(a, **kw):", "f(1, x=2, y=3)")).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "kw", text: '{"x": 2, "y": 3}', asLocal: true },
+    ]);
+    expect(of("def f(**kw):", "f()")).toEqual([{ name: "kw", text: "{}", asLocal: true }]);
+    // Positional arguments go into a plain `*args` even when the callee also has
+    // names before it.
+    expect(of("def f(a, b, *rest, **kw):", "f(1, 2, 3, 4, z=5)")).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "b", text: "2", asLocal: false },
+      { name: "rest", text: "(3, 4)", asLocal: true },
+      { name: "kw", text: '{"z": 5}', asLocal: true },
+    ]);
+  });
+
+  it("keeps a keyword-only parameter out of the positional arguments", () => {
+    const params = parametersOf("def f(a, *, b=2):") as Param[];
+    // `f(1, 2)` would be a TypeError: `b` can only be passed by keyword.
+    expect(bindArguments(params, argumentsOf("f(1, 2)") as CallArgs)).toBe(
+      "the call passes more arguments than the declaration takes",
+    );
+    expect(bindArguments(params, argumentsOf("f(1)") as CallArgs)).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "b", text: "2", asLocal: false },
+    ]);
+    expect(bindArguments(params, argumentsOf("f(1, b=3)") as CallArgs)).toEqual([
+      { name: "a", text: "1", asLocal: false },
+      { name: "b", text: "3", asLocal: false },
+    ]);
   });
 
   it("knows what can stand as an operand", () => {
@@ -618,6 +711,118 @@ describe("planInlineFunction", () => {
         "\n",
       ),
     );
+  });
+
+  it("re-quotes a value substituted into an f-string", async () => {
+    // `f"{name}"` with `name` bound to `"n"` would read `f"{"n"}"`, a syntax error
+    // before Python 3.12, so the literal takes the other quote.
+    const src = ["def tag(name):", '    return f"{name}!"', "", 'y = tag("n")', ""].join("\n");
+    H.text = src;
+    outlineOf("tag");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", 'def tag(name):\n    return f"{name}!"'],
+      ["block", '    return f"{name}!"', 0, "body"],
+      ["return_statement", '    return f"{name}!"'],
+      ["string", 'f"{name}!"'],
+      ["interpolation", "{name}"],
+      ["assignment", 'y = tag("n")'],
+      ["call", 'tag("n")', 0, "right"],
+      ["identifier", "tag", 0, "function"],
+      ["argument_list", '("n")', 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf('tag("n")') + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("f\"{'n'}!\"");
+  });
+
+  it("knows which quotes an f-string can hold", () => {
+    expect(requote('"n"', '"')).toBe("'n'");
+    expect(requote("'n'", "'")).toBe('"n"');
+    // Already fine.
+    expect(requote("'n'", '"')).toBe("'n'");
+    // A triple-quoted f-string holds either.
+    expect(requote('"n"', '"""')).toBe('"n"');
+    // Both kinds of quote in the body, or a trailing backslash: nothing works.
+    expect(requote(`"""a'b"""`, '"')).toBeNull();
+    expect(requote('"a\\\\"', '"')).toBeNull();
+    // Not a literal at all.
+    expect(requote("a + b", '"')).toBeNull();
+  });
+
+  it("keeps a *args parameter as a tuple of what the call passed", async () => {
+    const src = ["def total(base, *rest):", "    return base + len(rest)", "", "y = total(1, 2, 3)", ""].join("\n");
+    H.text = src;
+    outlineOf("total");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def total(base, *rest):\n    return base + len(rest)"],
+      ["block", "    return base + len(rest)", 0, "body"],
+      ["return_statement", "    return base + len(rest)"],
+      ["assignment", "y = total(1, 2, 3)"],
+      ["call", "total(1, 2, 3)", 0, "right"],
+      ["identifier", "total", 0, "function"],
+      ["argument_list", "(1, 2, 3)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("total(1, 2, 3)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("1 + len(rest)");
+    // The tuple is built where the call was, so the body sees what it would have.
+    expect(plan.prelude!.text).toBe("rest = (2, 3)\n");
+  });
+
+  it("keeps a **kwargs parameter as a dict of the stray keywords", async () => {
+    const src = ["def tag(name, **opts):", "    return name + str(opts)", "", "y = tag(1, a=2, b=3)", ""].join("\n");
+    H.text = src;
+    outlineOf("tag");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def tag(name, **opts):\n    return name + str(opts)"],
+      ["block", "    return name + str(opts)", 0, "body"],
+      ["return_statement", "    return name + str(opts)"],
+      ["assignment", "y = tag(1, a=2, b=3)"],
+      ["call", "tag(1, a=2, b=3)", 0, "right"],
+      ["identifier", "tag", 0, "function"],
+      ["argument_list", "(1, a=2, b=3)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("tag(1, a=2, b=3)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("1 + str(opts)");
+    expect(plan.prelude!.text).toBe('opts = {"a": 2, "b": 3}\n');
+  });
+
+  it("renames a *args collection that the caller already has", async () => {
+    // `rest` exists in the caller: writing the tuple into it would change it.
+    const src = [
+      "def count(*rest):",
+      "    return len(rest)",
+      "",
+      "def caller(a):",
+      "    rest = [a]",
+      "    n = count(1, 2)",
+      "    return rest",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("count");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def count(*rest):\n    return len(rest)"],
+      ["block", "    return len(rest)", 0, "body"],
+      ["return_statement", "    return len(rest)"],
+      ["assignment", "n = count(1, 2)"],
+      ["call", "count(1, 2)", 0, "right"],
+      ["identifier", "count", 0, "function"],
+      ["argument_list", "(1, 2)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("count(1, 2)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("len(rest_1)");
+    expect(plan.prelude!.text).toBe("    rest_1 = (1, 2)\n");
   });
 
   it("inlines a body with no return, spelling out the None", async () => {

@@ -138,33 +138,33 @@ def caller(v):
 
 ## 三、被调用的函数
 
-| 场景                       | 拒绝原因                                  |
-| -------------------------- | ----------------------------------------- |
-| 不在本文件声明             | `'name' is not declared in this file`     |
-| 声明读不出来               | `the declaration could not be read`       |
-| 声明没有函数体             | `the declaration has no body`             |
-| 声明没有参数列表           | `the declaration has no parameter list`   |
-| 参数列表括号不匹配         | `the parameter list is not closed`        |
-| 参数名读不出来             | `a parameter name could not be read`      |
-| 带 `*args` / `**kwargs`    | `the declaration takes *args or **kwargs` |
-| 调用在自己的声明里（递归） | `the call is inside its own declaration`  |
+| 场景                       | 拒绝原因                                 |
+| -------------------------- | ---------------------------------------- |
+| 不在本文件声明             | `'name' is not declared in this file`    |
+| 声明读不出来               | `the declaration could not be read`      |
+| 声明没有函数体             | `the declaration has no body`            |
+| 声明没有参数列表           | `the declaration has no parameter list`  |
+| 参数列表括号不匹配         | `the parameter list is not closed`       |
+| 参数名读不出来             | `a parameter name could not be read`     |
+| 调用在自己的声明里（递归） | `the call is inside its own declaration` |
 
 ## 四、函数体的形态
 
-| 场景                                   | 拒绝原因                                                 |
-| -------------------------------------- | -------------------------------------------------------- |
-| 有装饰器                               | `the declaration is decorated`                           |
-| 是 `async def`                         | `the declaration is a coroutine`                         |
-| 含 `yield`                             | `the declaration is a generator`                         |
-| 含 `await`                             | `the declaration is a coroutine`                         |
-| 函数体和签名在同一行                   | `the declaration has its body on the signature line`     |
-| 缩进不一致（续行、`match` 等）         | `the declaration is not indented`                        |
-| 语句边界读不出来                       | `a statement of the declaration could not be read`       |
-| 语句伸出函数体                         | `the declaration has a statement this scope cannot move` |
-| 没有语句（或只有 docstring）           | `the declaration returns nothing`                        |
-| 给参数赋值                             | `the declaration assigns to its parameter 'x'`           |
-| 搬移的文本里有自己的作用域且重绑了该名 | `'x' is rebound by a scope of the declaration's own`     |
-| `return` 落在函数体自己的循环里        | `the declaration returns from inside a loop`             |
+| 场景                                           | 拒绝原因                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| 有装饰器                                       | `the declaration is decorated`                                     |
+| 是 `async def`                                 | `the declaration is a coroutine`                                   |
+| 含 `yield`                                     | `the declaration is a generator`                                   |
+| 含 `await`                                     | `the declaration is a coroutine`                                   |
+| 函数体和签名在同一行                           | `the declaration has its body on the signature line`               |
+| 缩进不一致（续行、`match` 等）                 | `the declaration is not indented`                                  |
+| 语句边界读不出来                               | `a statement of the declaration could not be read`                 |
+| 语句伸出函数体                                 | `the declaration has a statement this scope cannot move`           |
+| 没有语句（或只有 docstring）                   | `the declaration returns nothing`                                  |
+| 给参数赋值                                     | `the declaration assigns to its parameter 'x'`                     |
+| 搬移的文本里有自己的作用域且重绑了该名         | `'x' is rebound by a scope of the declaration's own`               |
+| 代入的字符串字面量两种引号都会被 f-string 吃掉 | `'x' is substituted inside an f-string that cannot hold the value` |
+| `return` 落在函数体自己的循环里                | `the declaration returns from inside a loop`                       |
 
 ### `if` / `for` / `try` / `with`：整体搬移
 
@@ -210,6 +210,25 @@ def f(xs):
 语法上可以解决（加结果标记 + 每层循环后判断），但那要求把 `break` 分类到
 「跳出 wrapper」和「跳出自己的循环」两种，并重写每层循环的尾部。v1 不做，直接拒绝。
 
+### 代入的字符串落进 f-string 时换引号
+
+```python
+def tag(name):
+    return f"{name}!"
+
+y = tag("n")
+```
+
+`name` 代入 `"n"` 会得到 `f"{"n"}!"` —— Python 3.12 之前这是语法错误（同一个引号
+不能既包住 f-string 又包住字段里的字符串）。所以内部字面量改用另一种引号：
+
+```python
+y = f"{'n'}!"
+```
+
+三重引号的 f-string（`f"""…"""`）本来就能容纳单引号，不需要改。两种引号都在
+字面量里出现、或字面量以反斜杠结尾时无法安全改写，此时拒绝。
+
 ### 给参数赋值：给它一个自己的局部变量
 
 ```python
@@ -240,6 +259,42 @@ y = x
 | 关键字标签不是形参名    | `the call passes an unknown keyword 'x'`                      |
 | 实参无法对应到形参      | `the call's arguments could not be matched to the parameters` |
 | 省略的形参没有默认值    | `the call does not pass 'x' and it has no default`            |
+
+### `*args` / `**kwargs`：调用方自己造出那个元组或字典
+
+`*args` 收到的是一个**元组**，`**kwargs` 收到的是一个**字典**——都是调用那一刻
+用实参拼出来的，没有任何一个表达式能代替它们。所以这两个参数不代入，而是在调用方
+变成局部变量，初值是拼好的字面量：
+
+```python
+def total(base, *rest):
+    return base + len(rest)
+
+y = total(1, 2, 3)
+```
+
+```python
+rest = (2, 3)
+y = 1 + len(rest)
+```
+
+| 声明              | 调用          | 初值                                       |
+| ----------------- | ------------- | ------------------------------------------ |
+| `def f(*rest)`    | `f()`         | `()`                                       |
+| `def f(*rest)`    | `f(1)`        | `(1,)` —— 单元素必须带逗号，`(1)` 不是元组 |
+| `def f(a, *rest)` | `f(1, 2, 3)`  | `rest = (2, 3)`                            |
+| `def f(**kw)`     | `f()`         | `{}`                                       |
+| `def f(**kw)`     | `f(p=1, q=2)` | `{"p": 1, "q": 2}`                         |
+
+关键字实参按源码顺序写进字典，Python 3.7+ 的字典保序，所以 `kw` 看到的顺序和
+直接调用时一致。
+
+**关键字专用参数**（`def f(a, *, b)` 或 `def f(*rest, b)` 里 `*` 之后的）也支持：
+位置实参不会绑它们，只有同名关键字才会。
+
+**仍然拒绝「调用展开了参数」**：`f(*xs)` 里 `xs` 的长度运行时才知道。要支持它得
+判断 `xs` 能不能解包赋值（`a, *rest = xs`）、`xs` 为空时行为是否仍等价——那会把
+「一次赋值」变成「一次可能抛异常的赋值」，是另一档。
 
 ## 六、调用出现的位置
 
@@ -290,19 +345,20 @@ body 搬到语句之前，调用处只留临时变量名。
 
 CPython 标准库 13 个模块、175 个「本文件函数被调用」的位置：
 
-| 版本                                            | 成功           | 原因                  |
-| ----------------------------------------------- | -------------- | --------------------- |
-| 只支持单 `return`                               | 3/52 = 5.8%    | —                     |
-| 支持 `return` 前有声明                          | 6/52 = 11.5%   | 见下方五轮修复        |
-| 语句边界取自语法树（`if`/`for`/`try` 整体搬移） | 20/175 = 11.4% | 样本变大 3.4 倍，见下 |
-| 早返搬移（`while True:` + `break`）             | 36/175 = 20.6% | 见下                  |
-| 无 `return` 的过程体搬移                        | 63/175 = 36.0% | 见下                  |
-| 临时变量（表达式内的调用、写参数、非裸名目标）  | 91/175 = 52.0% | 见下                  |
+| 版本                                            | 成功            | 原因                             |
+| ----------------------------------------------- | --------------- | -------------------------------- |
+| 只支持单 `return`                               | 3/52 = 5.8%     | —                                |
+| 支持 `return` 前有声明                          | 6/52 = 11.5%    | 见下方六轮修复                   |
+| 语句边界取自语法树（`if`/`for`/`try` 整体搬移） | 20/175 = 11.4%  | 样本变大 3.4 倍，见下            |
+| 早返搬移（`while True:` + `break`）             | 36/175 = 20.6%  | 见下                             |
+| 无 `return` 的过程体搬移                        | 63/175 = 36.0%  | 见下                             |
+| 临时变量（表达式内的调用、写参数、非裸名目标）  | 91/175 = 52.0%  | 见下                             |
+| `*args` / `**kwargs` 打包成元组/字典            | 103/132 = 78.0% | 同一 132 点的子集：67.4% → 78.0% |
 
-前三行不可直接相比：第二行是 52 个位置的小样本，后两行是同一批模块的更大样本。
-可比的量是拒绝分布。
+前两行是 52 个位置的小样本，其余是同一批模块的更大样本，不可直接相比；
+可比的量是拒绝分布，以及「同子集前后」。
 
-五轮修复过程中暴露的真缺陷：
+六轮修复过程中暴露的真缺陷：
 
 | #   | 缺陷                                     | 后果                                                              |
 | --- | ---------------------------------------- | ----------------------------------------------------------------- |
@@ -311,25 +367,23 @@ CPython 标准库 13 个模块、175 个「本文件函数被调用」的位置�
 | 3   | 行尾注释让 `nodeAt` 返回整个 block       | 误拒（`out = ... # type: ignore`）                                |
 | 4   | 按缩进分组，导致复合语句被判「有嵌套块」 | 误拒 21 个 → 改为逐行问语法树取节点完整范围                       |
 | 5   | 用 `indexOf(":")` 找函数体起点           | 带注解的参数 `def f(x: int)` 全部误拒 → 改为找括号深度为 0 的冒号 |
+| 6   | 代入的字符串直接塞进 f-string 的 `{}`    | **静默生成语法错误**：`f"{"n"}"` 在 3.11 是 SyntaxError           |
 
-**当前拒绝分布（175 个）**：
+**当前拒绝分布（132 个）**：
 
-| 次数 | 原因                  |
-| ---- | --------------------- |
-| 52   | 不在本文件声明        |
-| 17   | 带 `*args`/`**kwargs` |
-| 10   | 生成器                |
-| 3    | `return` 在循环里     |
-| 1    | 赋给本层写不了的目标  |
-| 1    | 缩进不一致            |
+| 次数 | 原因                 |
+| ---- | -------------------- |
+| 21   | 不在本文件声明       |
+| 3    | 生成器               |
+| 3    | `return` 在循环里    |
+| 1    | 赋给本层写不了的目标 |
+| 1    | 缩进不一致           |
 
-「给参数赋值」（13）、「调用是更大表达式的一部分」（14）、「结果不是裸名」（5）
-三个桶全部清零。只看本文件内声明的调用点（175 − 52 = 123），成功率是
-**91/123 = 74.0%**。
+只看本文件内声明的调用点（132 − 21 = 111），成功率是 **103/111 = 92.8%**。
 
-**结论：三档搬移把成功率从 11.4% 推到 52%。剩下的拒绝没有一个是误判：
-跨文件 52、变长参数 17、生成器 10 是三块独立的硬骨头，`return` 在循环里 3
-需要「跳出两层」的标记。**
+**结论：四档能力把成功率从 11.4% 推到 78%。剩下的拒绝没有一个是误判：**
+跨文件、生成器、`return` 落在自己的循环里、以及调用展开 `f(*xs)`，
+都需要跨函数或跨语句的能力，不是「再加一条规则」。
 
 ## 九、证据
 

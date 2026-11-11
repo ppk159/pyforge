@@ -52,3 +52,8 @@ fixtures/**/_im*.py
 fixtures/**/_er*.py
 fixtures/**/_pr*.py
 fixtures/**/_cf*.py
+fixtures/**/_va*.py
+fixtures/**/_cv*.py
+fixtures/**/_fs*.py
+fixtures/**/_tv*.py
+fixtures/**/_rv*.py

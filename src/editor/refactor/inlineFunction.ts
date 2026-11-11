@@ -131,25 +131,43 @@ export function splitTopLevel(text: string): string[] {
 }
 
 /** A parameter as the signature spells it. */
+/**
+ * What a parameter is, which decides where the call's values go.
+ *
+ * `*name` collects the extra positional arguments into a tuple, `**name` collects
+ * the unmatched keywords into a dict, and a bare `*` is not a parameter at all —
+ * it only marks the ones after it as keyword-only.
+ */
+export type ParamKind = "positional" | "varargs" | "kwargs";
+
 export interface Param {
   name: string;
   /** The default's text, or `null` when the call must bind it. */
   default: string | null;
-  /** `*args` / `**kwargs`: variable arity. */
-  splat: boolean;
+  kind: ParamKind;
+  /** After `*` / `*args`: a positional argument cannot bind it. */
+  keywordOnly: boolean;
+  /** The bare `*` itself, which names nothing. */
+  separator?: boolean;
 }
 
-/** `b`, `b: int`, `b=2`, `b: int = 2` → the name and the default's text. */
+/** `b`, `b: int`, `b=2`, `b: int = 2`, `*rest`, `**kw`, `*` → the parameter. */
 export function parseParam(slice: string): Param {
   const text = slice.trim();
+  if (text.startsWith("**")) {
+    const name = text.slice(2).split(/[=:]/)[0]!.trim();
+    return { name, default: null, kind: "kwargs", keywordOnly: true };
+  }
   if (text.startsWith("*")) {
-    const name = text.replace(/^\*+/, "").split(/[=:]/)[0]!.trim();
-    return { name, default: null, splat: true };
+    const name = text.slice(1).split(/[=:]/)[0]!.trim();
+    // A bare `*` names nothing; it only starts the keyword-only section.
+    if (!name) return { name: "", default: null, kind: "positional", keywordOnly: true, separator: true };
+    return { name, default: null, kind: "varargs", keywordOnly: true };
   }
   const eq = topLevelEquals(text);
   const head = eq < 0 ? text : text.slice(0, eq);
   const def = eq < 0 ? null : text.slice(eq + 1).trim();
-  return { name: head.split(":")[0]!.trim(), default: def || null, splat: false };
+  return { name: head.split(":")[0]!.trim(), default: def || null, kind: "positional", keywordOnly: false };
 }
 
 /**
@@ -173,43 +191,179 @@ export function parametersOf(signature: string): Param[] | string {
   }
   if (close < 0) return "the parameter list is not closed";
   const params = splitTopLevel(signature.slice(open + 1, close)).map(parseParam);
-  if (params.some((x) => x.splat)) return "the declaration takes *args or **kwargs";
-  if (params.some((x) => !/^[A-Za-z_]\w*$/.test(x.name))) return "a parameter name could not be read";
+  // Everything after a `*` or `*name` is keyword-only, whatever it looks like.
+  let keywordSection = false;
+  for (const param of params) {
+    if (param.separator || param.kind === "varargs") keywordSection = true;
+    else if (param.kind === "positional") param.keywordOnly = keywordSection;
+  }
+  if (params.some((x) => !x.separator && !/^[A-Za-z_]\w*$/.test(x.name))) {
+    return "a parameter name could not be read";
+  }
   return params;
 }
 
-/** An argument as the call spells it. */
-export interface Arg {
-  /** The parameter it binds: by position, or by its keyword label. */
-  name: string | null;
-  text: string;
+/** A call's arguments, as the call spells them. */
+export interface CallArgs {
+  /** Positional arguments, in order, before any keyword. */
+  positional: string[];
+  /** `name=value` arguments, in order. */
+  keyword: { name: string; value: string }[];
+  /** `f(*xs)` / `f(**d)`: the argument list is not known until it runs. */
+  spread: string | null;
 }
 
-/** `f(a, b=1)` → `[{a}, {b, "1"}]`, matched against `params`. */
-export function argumentsOf(callText: string, params: Param[]): Arg[] | string {
+export function argumentsOf(callText: string): CallArgs | string {
   const open = callText.indexOf("(");
   const close = callText.lastIndexOf(")");
   if (open < 0 || close < 0) return "the call has no argument list";
-  const pieces = splitTopLevel(callText.slice(open + 1, close));
-  if (pieces.some((x) => x.startsWith("*"))) return "the call unpacks its arguments";
-
-  const out: Arg[] = [];
-  let positional = 0;
-  for (const piece of pieces) {
-    const eq = topLevelEquals(piece);
-    if (eq >= 0) {
-      out.push({ name: piece.slice(0, eq).trim(), text: piece.slice(eq + 1).trim() });
+  const out: CallArgs = { positional: [], keyword: [], spread: null };
+  let sawKeyword = false;
+  for (const piece of splitTopLevel(callText.slice(open + 1, close))) {
+    if (piece.startsWith("**") || piece.startsWith("*")) {
+      out.spread = piece;
       continue;
     }
-    const param = params[positional];
-    if (!param) return "the call passes more arguments than the declaration takes";
-    out.push({ name: param.name, text: piece });
-    positional++;
+    const eq = topLevelEquals(piece);
+    if (eq >= 0) {
+      out.keyword.push({ name: piece.slice(0, eq).trim(), value: piece.slice(eq + 1).trim() });
+      sawKeyword = true;
+      continue;
+    }
+    // Python allows no positional argument after a keyword one.
+    if (sawKeyword) return "the call's arguments could not be matched to the parameters";
+    out.positional.push(piece);
   }
   return out;
 }
 
-/** Text that can stand as an operand without parentheses. */
+/**
+ * One parameter and the value it starts with in the caller.
+ *
+ * `asLocal` marks a parameter that must *stay* a variable: `*args` and `**kwargs`
+ * hold a collection the call built, not one expression, so there is nothing to
+ * substitute for them.
+ */
+export interface Binding {
+  name: string;
+  text: string;
+  asLocal: boolean;
+}
+
+/** A tuple literal for `items`, with the trailing comma a single value needs. */
+export function tupleLiteral(items: string[]): string {
+  if (!items.length) return "()";
+  const parts = items.map((t) => (isAtomText(t) ? t : `(${t})`));
+  return parts.length === 1 ? `(${parts[0]},)` : `(${parts.join(", ")})`;
+}
+
+/**
+ * Which parameter each argument fills, or why the call does not line up.
+ *
+ * The rules are Python's own: positional arguments fill the positional parameters
+ * in order, a `*name` takes the leftovers as a tuple, keywords fill by name or
+ * join `**name`, and a parameter the call leaves out falls back to its default.
+ */
+export function bindArguments(params: Param[], args: CallArgs): Binding[] | string {
+  if (args.spread !== null) return "the call unpacks its arguments";
+  const real = params.filter((x) => !x.separator);
+  const byPosition = real.filter((p) => p.kind === "positional" && !p.keywordOnly);
+  const varargs = real.find((p) => p.kind === "varargs") ?? null;
+  const kwargs = real.find((p) => p.kind === "kwargs") ?? null;
+
+  const bound = new Map<string, Binding>();
+  let i = 0;
+  for (; i < args.positional.length && i < byPosition.length; i++) {
+    const param = byPosition[i]!;
+    bound.set(param.name, { name: param.name, text: args.positional[i]!, asLocal: false });
+  }
+  const extra = args.positional.slice(i);
+  if (extra.length && !varargs) return "the call passes more arguments than the declaration takes";
+
+  const intoKwargs: { name: string; value: string }[] = [];
+  for (const kw of args.keyword) {
+    const named = real.find((p) => p.kind === "positional" && p.name === kw.name);
+    if (named) {
+      if (bound.has(named.name)) return `the call passes '${kw.name}' twice`;
+      bound.set(named.name, { name: named.name, text: kw.value, asLocal: false });
+      continue;
+    }
+    if (kwargs) {
+      intoKwargs.push(kw);
+      continue;
+    }
+    return `the call passes an unknown keyword '${kw.name}'`;
+  }
+
+  for (const param of real) {
+    if (param.kind !== "positional" || bound.has(param.name)) continue;
+    if (param.default === null) return `the call does not pass '${param.name}' and it has no default`;
+    bound.set(param.name, { name: param.name, text: param.default, asLocal: false });
+  }
+
+  if (varargs) {
+    bound.set(varargs.name, { name: varargs.name, text: tupleLiteral(extra), asLocal: true });
+  }
+  if (kwargs) {
+    const entries = intoKwargs.map((kw) => `${JSON.stringify(kw.name)}: ${kw.value}`);
+    bound.set(kwargs.name, {
+      name: kwargs.name,
+      text: entries.length ? `{${entries.join(", ")}}` : "{}",
+      asLocal: true,
+    });
+  }
+  return [...bound.values()];
+}
+
+/** Whether `text` is a string literal, which may clash with an f-string's quotes. */
+export function isStringLiteral(text: string): boolean {
+  return /^[rRbBuUfF]{0,2}(["'])/.test(text.trim());
+}
+
+/**
+ * The quote of the f-string `range` sits inside, or `null` when it sits in no
+ * replacement field.
+ *
+ * A value substituted into `{…}` lands inside the surrounding string, so it has to
+ * survive that string's quotes. A triple-quoted f-string tolerates a single quote
+ * of the same kind; a single-quoted one does not.
+ */
+async function fstringQuoteAt(p: Prepared, range: Range): Promise<string | null> {
+  const found = await structure.nodeAt(p.ctx.doc, range).catch(() => null);
+  if (!found) return null;
+  const chain = [found.node, ...found.ancestors];
+  const field = chain.findIndex((n) => n.kind === "interpolation");
+  if (field < 0) return null;
+  const string = chain[field + 1];
+  if (!string || string.kind !== "string") return null;
+  const span = spanOf(p.doc, string);
+  const head = p.doc.sliceString(span.from, Math.min(span.to, span.from + 6));
+  const quote = /^[rRbBuUfF]{0,2}("""|'''|"|')/.exec(head);
+  if (!quote) return null;
+  // Only an f-string has replacement fields; a plain string here is a nested quote.
+  if (!/f/i.test(quote[0])) return null;
+  return quote[1]!;
+}
+
+/**
+ * `text` quoted so it can sit inside an f-string that uses `quote`.
+ *
+ * `null` when it cannot be done: both quote characters are in use, or the body
+ * ends with a backslash that would escape the closing quote.
+ */
+export function requote(text: string, quote: string): string | null {
+  const t = text.trim();
+  const m = /^([rRbBuUfF]{0,2})(["'])([\s\S]*)\2$/.exec(t);
+  if (!m) return null;
+  const [, prefix, used, body] = m as unknown as [string, string, string, string];
+  // A triple-quoted f-string can hold either single quote unchanged.
+  if (quote.length === 3) return t;
+  if (used !== quote) return t;
+  const other = used === '"' ? "'" : '"';
+  if (body.includes(other) || body.endsWith("\\")) return null;
+  return `${prefix}${other}${body}${other}`;
+}
+
 export function isAtomText(text: string): boolean {
   const t = text.trim();
   return (
@@ -529,23 +683,14 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
   const signature = doc.sliceString(fnSpan.from, fnSpan.to);
   const params = parametersOf(signature);
   if (typeof params === "string") return params;
-  const args = argumentsOf(callText, params);
+  const args = argumentsOf(callText);
   if (typeof args === "string") return args;
 
-  // Every parameter must be bound exactly once: by an argument, or by its own
-  // default when the call leaves it out.
-  const bound = new Map<string, string>();
-  for (const arg of args) {
-    if (!arg.name) return "the call's arguments could not be matched to the parameters";
-    if (bound.has(arg.name)) return `the call passes '${arg.name}' twice`;
-    if (!params.some((x) => x.name === arg.name)) return `the call passes an unknown keyword '${arg.name}'`;
-    bound.set(arg.name, arg.text);
-  }
-  for (const param of params) {
-    if (bound.has(param.name)) continue;
-    if (param.default === null) return `the call does not pass '${param.name}' and it has no default`;
-    bound.set(param.name, param.default);
-  }
+  // Which parameter each argument fills. `*args` / `**kwargs` come back marked
+  // `asLocal`: their value is a tuple or dict the call built, so they stay
+  // variables in the caller instead of being substituted.
+  const bindings = bindArguments(params, args);
+  if (typeof bindings === "string") return bindings;
 
   const body = await bodyOf(p, fn);
   if (typeof body === "string") return body;
@@ -559,10 +704,13 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
   // the last one. Blank lines and comments in between travel with it.
   const region: Span = { from: doc.lineAt(first.from).from, to: last.to };
 
-  // Which names to rewrite inside the moved text, and to what.
+  // Which names to rewrite inside the moved text, and to what. A `*args` /
+  // `**kwargs` parameter is skipped here: its value is a tuple or dict the call
+  // built, so it stays a variable and is set up with the other init lines.
   const substitutions = new Map<string, string>();
-  for (const [paramName, argText] of bound) {
-    substitutions.set(paramName, isAtomText(argText) ? argText : `(${argText})`);
+  for (const b of bindings) {
+    if (b.asLocal) continue;
+    substitutions.set(b.name, isAtomText(b.text) ? b.text : `(${b.text})`);
   }
 
   // Collisions: a local the body declares would shadow a name the caller already
@@ -593,29 +741,34 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
     }
   }
 
-  // A parameter written inside the body cannot be substituted: the assignment
-  // would reach through to the caller's variable (or to an expression, which is
-  // not writable at all). It becomes a local of its own that starts as the
-  // argument, which is exactly what the callee's own variable was.
+  // The parameters that must become variables of the caller, with the value each
+  // starts as. Two reasons to be here: the body writes the parameter, so
+  // substituting the argument would reach through to the caller's own variable;
+  // or it is `*args` / `**kwargs`, whose value the call built out of the
+  // arguments and which no single expression stands for.
   const initLines: string[] = [];
-  for (const paramName of [...bound.keys()]) {
-    if (!substitutions.has(paramName)) continue;
-    const found = await structure.identifiers(ctx.doc, paramName).catch(() => []);
-    let written = false;
-    for (const occ of found) {
-      if (occ.qualified) continue;
-      const s = offsetsOf(doc, occ.range);
-      if (s.from < region.from || s.to > region.to) continue;
-      if (await isWriteTarget(ctx, occ.range)) {
-        written = true;
-        break;
+  for (const b of bindings) {
+    let local: string;
+    if (b.asLocal) {
+      local = await freshName(p, b.name, scope, fnSpan);
+    } else {
+      const found = await structure.identifiers(ctx.doc, b.name).catch(() => []);
+      let written = false;
+      for (const occ of found) {
+        if (occ.qualified) continue;
+        const s = offsetsOf(doc, occ.range);
+        if (s.from < region.from || s.to > region.to) continue;
+        if (await isWriteTarget(ctx, occ.range)) {
+          written = true;
+          break;
+        }
       }
+      if (!written) continue;
+      local = await freshName(p, b.name, scope, fnSpan);
     }
-    if (!written) continue;
-    const local = await freshName(p, paramName, scope, fnSpan);
-    if (local !== paramName) renamed.push({ from: paramName, to: local });
-    substitutions.set(paramName, local);
-    initLines.push(`${local} = ${bound.get(paramName)!}`);
+    if (local !== b.name) renamed.push({ from: b.name, to: local });
+    substitutions.set(b.name, local);
+    initLines.push(`${local} = ${b.text}`);
   }
 
   // A substitution only holds where the name still means the callee's parameter or
@@ -633,7 +786,18 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
       if (nests && (await insideNestedScope(p, occ.range, fn))) {
         return `'${from}' is rebound by a scope of the declaration's own`;
       }
-      subEdits.push({ from: s.from, to: s.to, insert: to });
+      // A value that lands inside an f-string's `{…}` has to survive that
+      // string's quotes: `f"{"n"}"` is a syntax error before Python 3.12.
+      let insert = to;
+      if (isStringLiteral(to)) {
+        const quote = await fstringQuoteAt(p, occ.range);
+        if (quote) {
+          const fixed = requote(insert, quote);
+          if (fixed === null) return `'${from}' is substituted inside an f-string that cannot hold the value`;
+          insert = fixed;
+        }
+      }
+      subEdits.push({ from: s.from, to: s.to, insert });
     }
   }
 
