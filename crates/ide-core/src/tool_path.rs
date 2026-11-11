@@ -97,8 +97,26 @@ fn search_dirs(
     dirs.extend(shims.iter().cloned());
     dirs.extend(SYSTEM_DIRS.iter().map(PathBuf::from));
     let mut seen = HashSet::new();
-    dirs.retain(|d| d.is_absolute() && std::env::join_paths([d]).is_ok() && seen.insert(d.clone()));
+    dirs.retain(|d| {
+        d.is_absolute() && std::env::join_paths([d]).is_ok() && !is_build_script_dir(d) && seen.insert(d.clone())
+    });
     dirs
+}
+
+/// A Cargo build-script output directory (`target/<profile>/build/<crate>-<hash>/out`).
+///
+/// One of these is on `PATH` only when the process was started by Cargo, which does it so a
+/// build can find the libraries it just compiled. They are this app's own build, never where a
+/// tool a user wants lives, and a `tauri dev` session puts dozens of them on `PATH` — enough to
+/// push the value past what `cmd.exe` accepts, which makes it drop `PATH` altogether.
+fn is_build_script_dir(dir: &Path) -> bool {
+    // …/<profile>/build/<crate>-<hash>/out
+    let mut parts = dir.components().rev();
+    let out = parts.next().is_some_and(|c| c.as_os_str() == "out");
+    let crate_hash = parts.next().is_some_and(|c| c.as_os_str().to_string_lossy().contains('-'));
+    let build = parts.next().is_some_and(|c| c.as_os_str() == "build");
+    let profile = parts.next().is_some_and(|c| c.as_os_str() == "debug" || c.as_os_str() == "release");
+    out && crate_hash && build && profile
 }
 
 /// Tool directories below the home directory.
@@ -150,6 +168,30 @@ pub fn version_key(name: &str) -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drops_cargo_build_script_output_directories() {
+        // `cargo` puts its build scripts' `out` directories on `PATH` for the process it
+        // starts, so a `tauri dev` session inherits dozens of them. They hold no tools.
+        assert!(is_build_script_dir(Path::new("/repo/target/debug/build/aws-lc-sys-d0a94f0c8add4346/out")));
+        assert!(is_build_script_dir(Path::new("/repo/target/release/build/ring-1234/out")));
+        // Anything else is a real directory: keep it.
+        assert!(!is_build_script_dir(Path::new("/repo/target/debug/build/ring-1234")));
+        assert!(!is_build_script_dir(Path::new("/repo/target/debug/deps")));
+        assert!(!is_build_script_dir(Path::new("/usr/local/bin")));
+        assert!(!is_build_script_dir(Path::new("/repo/out")));
+    }
+
+    #[test]
+    fn a_tauri_dev_path_loses_its_build_directories() {
+        let root = if cfg!(windows) { Path::new(r"C:\repo") } else { Path::new("/repo") };
+        let keep = root.join("target").join("debug").join("deps");
+        let drop = root.join("target").join("debug").join("build").join("tree-sitter-abc").join("out");
+        let path = std::env::join_paths([keep.clone(), drop]).unwrap();
+        let dirs = search_dirs(Some(&path), None, None, None, &[]);
+        assert!(dirs.contains(&keep));
+        assert!(!dirs.iter().any(|d| d.ends_with(Path::new("out")) && d.to_string_lossy().contains("build")));
+    }
 
     #[test]
     fn commands_resolve_on_path_and_explicit_paths_under_root() {

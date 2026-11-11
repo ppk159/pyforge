@@ -11,13 +11,44 @@ use std::time::{Duration, Instant};
 
 pub(crate) use ide_core::tool_path::search_path;
 
+/// The longest `PATH` a `cmd.exe` child can be given: past this Windows drops the variable,
+/// and every command a batch script runs is then "not recognized". The limit is 8191
+/// characters; the margin covers the terminating NUL and a longer enclosing block.
+#[cfg(windows)]
+const PATH_BUDGET: usize = 8000;
+
 /// `dir` in front of the search path, as a `PATH` value.
+///
+/// `dirs` are kept whatever happens — they are what the caller asked for. Entries from the
+/// search path are appended while they fit the budget, in order, so a path that grew without
+/// bound (a long-lived development session adds build directories, version managers add
+/// shims) loses its least useful entries instead of the whole variable.
 pub(crate) fn path_with(dirs: &[&Path]) -> String {
-    let mut all: Vec<PathBuf> = dirs.iter().map(|d| d.to_path_buf()).collect();
-    all.extend(std::env::split_paths(&search_path()));
-    let mut seen = std::collections::HashSet::new();
-    all.retain(|d| seen.insert(d.clone()));
-    std::env::join_paths(all).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    #[cfg(not(windows))]
+    {
+        let mut all: Vec<PathBuf> = dirs.iter().map(|d| d.to_path_buf()).collect();
+        all.extend(std::env::split_paths(&search_path()));
+        let mut seen = std::collections::HashSet::new();
+        all.retain(|d| seen.insert(d.clone()));
+        return std::env::join_paths(all).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    }
+    #[cfg(windows)]
+    {
+        let mut all: Vec<PathBuf> = dirs.iter().map(|d| d.to_path_buf()).collect();
+        let mut seen: std::collections::HashSet<PathBuf> = all.iter().cloned().collect();
+        let mut used: usize = all.iter().map(|d| d.as_os_str().len() + 1).sum();
+        for dir in std::env::split_paths(&search_path()) {
+            let cost = dir.as_os_str().len() + 1;
+            if used + cost > PATH_BUDGET {
+                break;
+            }
+            if seen.insert(dir.clone()) {
+                used += cost;
+                all.push(dir);
+            }
+        }
+        std::env::join_paths(all).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    }
 }
 
 /// Resolves a command name on the search path.
