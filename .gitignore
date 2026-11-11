@@ -45,4 +45,10 @@ CLAUDE.local.md
 pycharm-screenshots/
 
 # Scratch fixture files used while driving the app by hand; never committed.
+# Refactoring probes: throwaway files the measurements write into the fixture app.
 fixtures/**/_*probe.py
+fixtures/**/_iv*.py
+fixtures/**/_im*.py
+fixtures/**/_er*.py
+fixtures/**/_pr*.py
+fixtures/**/_cf*.py

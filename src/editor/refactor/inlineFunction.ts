@@ -552,7 +552,6 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
 
   const returns = await returnsIn(p, fn, body);
   if (typeof returns === "string") return returns;
-  if (!returns.length) return "the declaration returns nothing";
 
   const first = body.statements[0]!;
   const last = body.statements[body.statements.length - 1]!;
@@ -774,6 +773,19 @@ async function planMovesBody(args: {
 
   const replace: Span = { from: stmtLine.from, to: endLine.to };
   const callee = name;
+
+  // A body with no `return` at all needs no control flow: the call ran those
+  // statements and answered None, so they are copied and the answer is spelled
+  // out where the call used to be.
+  if (!returns.length) {
+    const lines = [reindent(carried, body.indent, indent)];
+    if (shape === "assign") lines.push(`${indent}${target} = None`);
+    else if (shape === "return") lines.push(`${indent}return None`);
+    if (comment) lines[lines.length - 1] += `  ${comment}`;
+    void fn;
+    return { from: replace.from, to: replace.to, text: lines.join("\n"), wrap: false, callee, prelude: null, renamed };
+  }
+
   if (shape === "return") {
     const text = reindent(carried, body.indent, indent);
     return {

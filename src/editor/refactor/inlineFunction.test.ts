@@ -505,6 +505,101 @@ describe("planInlineFunction", () => {
     expect(plan.prelude!.text).toBe('if a < 0:\n    raise ValueError("neg")\nfor i in b:\n    use(i)\n');
   });
 
+  it("inlines a body with no return, spelling out the None", async () => {
+    // The call ran those statements and answered None; both halves have to appear
+    // where the call was.
+    const src = ["def log(x):", "    print(x)", "    tick()", "", "y = log(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("log");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def log(x):\n    print(x)\n    tick()"],
+      ["block", "    print(x)\n    tick()", 0, "body"],
+      ["expression_statement", "    print(x)"],
+      ["call", "print(x)"],
+      ["expression_statement", "    tick()"],
+      ["call", "tick()"],
+      ["expression_statement", "y = log(a)"],
+      ["assignment", "y = log(a)"],
+      ["call", "log(a)", 0, "right"],
+      ["identifier", "log", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("log(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe(["print(a)", "tick()", "y = None"].join("\n"));
+    expect(plan.prelude).toBeNull();
+  });
+
+  it("returns None when a body with no return is returned", async () => {
+    const src = ["def log(x):", "    print(x)", "", "def g(v):", "    return log(v)", ""].join("\n");
+    H.text = src;
+    outlineOf("log");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def log(x):\n    print(x)"],
+      ["block", "    print(x)", 0, "body"],
+      ["expression_statement", "    print(x)"],
+      ["call", "print(x)"],
+      ["function_definition", "def g(v):\n    return log(v)"],
+      ["block", "    return log(v)", 0, "body"],
+      ["return_statement", "    return log(v)"],
+      ["call", "log(v)"],
+      ["identifier", "log", 0, "function"],
+      ["argument_list", "(v)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("log(v)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe(["    print(v)", "    return None"].join("\n"));
+  });
+
+  it("inlines a body with no return whose value is discarded", async () => {
+    const src = ["def log(x):", "    print(x)", "", "log(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("log");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def log(x):\n    print(x)"],
+      ["block", "    print(x)", 0, "body"],
+      ["expression_statement", "    print(x)"],
+      ["call", "print(x)"],
+      ["expression_statement", "log(a)"],
+      ["call", "log(a)"],
+      ["identifier", "log", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("log(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("print(a)");
+  });
+
+  it("keeps a control structure of a body with no return", async () => {
+    // Nothing returns, so nothing needs a way out: the loop is copied as it is.
+    const src = ["def emit(xs):", "    for x in xs:", "        print(x)", "", "emit(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("emit");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def emit(xs):\n    for x in xs:\n        print(x)"],
+      ["block", "    for x in xs:\n        print(x)", 0, "body"],
+      ["for_statement", "    for x in xs:\n        print(x)"],
+      ["block", "        print(x)"],
+      ["expression_statement", "        print(x)"],
+      ["call", "print(x)"],
+      ["expression_statement", "emit(a)"],
+      ["call", "emit(a)"],
+      ["identifier", "emit", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("emit(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe(["for x in a:", "    print(x)"].join("\n"));
+  });
+
   it("inlines a body with several returns into an assignment", async () => {
     const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
     H.text = src;
