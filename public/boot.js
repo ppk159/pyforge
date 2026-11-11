@@ -98,6 +98,10 @@
   const onReady = () => {
     ready = true;
     window.clearTimeout(timer);
+    // A slow start is not a failed one: if the timeout already drew the panel, the
+    // app came up after all and the panel would cover a working window.
+    document.getElementById("boot-error")?.remove();
+    delete document.documentElement.dataset.boot;
     window.removeEventListener("error", onError, true);
     window.removeEventListener("unhandledrejection", onRejection);
     window.removeEventListener("openidea:boot-error", onBootError);

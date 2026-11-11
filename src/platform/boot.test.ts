@@ -56,6 +56,17 @@ it("reports an unresolved startup instead of waiting forever", () => {
   expect(document.querySelector("textarea")?.value).toContain("Startup did not finish within 30 seconds.");
 });
 
+it("takes the timeout message away when a slow startup finishes after all", () => {
+  // A dev server compiles modules on demand: the first load can pass 30 seconds and
+  // still succeed. The message was drawn over a window that then became usable, so it
+  // has to go — otherwise a working editor looks like a crash.
+  vi.advanceTimersByTime(30_000);
+  expect(document.getElementById("boot-error")).not.toBeNull();
+  window.dispatchEvent(new Event("openidea:boot-ready"));
+  expect(document.getElementById("boot-error")).toBeNull();
+  expect(document.documentElement.dataset.boot).toBeUndefined();
+});
+
 it("stops intercepting failures after a successful startup", () => {
   window.dispatchEvent(new Event("openidea:boot-ready"));
   window.dispatchEvent(new ErrorEvent("error", { message: "runtime failure" }));
