@@ -341,7 +341,11 @@ async fn start_inner(
     let encoding = settings.console.encoding;
     let options = StartOptions {
         encoding: Some(encoding).filter(|e| !e.trim().is_empty()),
-        python_paths: if *root != project.root { vec![root.clone()] } else { super::python::paths(&project) },
+        python_paths: if *root != project.root {
+            vec![root.clone()]
+        } else {
+            super::python::paths(&project, config.extras.python_content_roots, config.extras.python_source_roots)
+        },
         ruby_reporter: ruby_reporter_dir(host, &config),
     };
     project.require_trust()?;

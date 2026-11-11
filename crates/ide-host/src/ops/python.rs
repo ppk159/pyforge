@@ -5,18 +5,35 @@ use ide_workspace::roots::RootKind;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-pub(super) fn paths(project: &Project) -> Vec<PathBuf> {
+/// The project root is always on the import path: it is what `python -m package`
+/// and a plain `import` resolve against. The content and source roots are what the
+/// configuration's switches add on top, as PyCharm's two checkboxes do.
+pub(super) fn paths(project: &Project, content_roots: bool, source_roots: bool) -> Vec<PathBuf> {
     let mut paths = vec![project.root.clone()];
-    paths.extend(project.content_roots());
-    for root in project.roots().roots {
-        if matches!(root.kind, RootKind::Source | RootKind::Test) {
-            let path = project.root.join(root.path);
-            if !paths.contains(&path) {
-                paths.push(path);
+    if content_roots {
+        for root in project.content_roots() {
+            if !paths.contains(&root) {
+                paths.push(root);
+            }
+        }
+    }
+    if source_roots {
+        for root in project.roots().roots {
+            if matches!(root.kind, RootKind::Source | RootKind::Test) {
+                let path = project.root.join(root.path);
+                if !paths.contains(&path) {
+                    paths.push(path);
+                }
             }
         }
     }
     paths
+}
+
+/** The PYTHONPATH switches, which only a run configuration carries. */
+pub(super) fn root_flags(extra: Option<&serde_json::Value>) -> (bool, bool) {
+    let flag = |key: &str| extra.and_then(|e| e.get(key)).and_then(|v| v.as_bool()).unwrap_or(true);
+    (flag("pythonContentRoots"), flag("pythonSourceRoots"))
 }
 
 pub(super) fn prepare_debug(config: &mut LaunchConfig, paths: &[PathBuf]) -> IdeResult<()> {

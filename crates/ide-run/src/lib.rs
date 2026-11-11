@@ -135,6 +135,17 @@ pub struct RunExtras {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub env_files: Vec<String>,
+    /// "Add content roots to PYTHONPATH": the project's content roots go on the
+    /// Python import path. Unset means on, which is what every configuration had
+    /// before the switch existed.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    #[specta(optional)]
+    pub python_content_roots: bool,
+    /// "Add source roots to PYTHONPATH": the source and test roots set in Project
+    /// Structure go on the import path too.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    #[specta(optional)]
+    pub python_source_roots: bool,
     /// "Redirect input from": the process reads this file as stdin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
@@ -192,6 +203,8 @@ impl Default for RunExtras {
             local: false,
             include_system_env: true,
             env_files: Vec::new(),
+            python_content_roots: true,
+            python_source_roots: true,
             stdin_file: None,
             output_file: None,
             before_launch: Vec::new(),

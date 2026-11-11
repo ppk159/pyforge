@@ -22,6 +22,8 @@ import { useProject } from "@/platform/project";
 
 import { tomcatType } from "./tomcat";
 import { goBuildType, goTestType } from "./goTypes";
+import { pythonType } from "./pythonTypes";
+import { flaskType } from "./flaskTypes";
 
 import { dotnetProjectType, dotnetTestType } from "./dotnetTypes";
 import { rakeType, rspecType, rubyScriptType } from "./rubyTypes";
@@ -436,6 +438,8 @@ export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [
   gradle,
   maven,
   godot,
+  pythonType,
+  flaskType,
   pytest,
   rubyScriptType,
   rakeType,

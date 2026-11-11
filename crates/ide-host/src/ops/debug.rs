@@ -24,7 +24,9 @@ pub async fn debug_start(host: &Host, window: &str, config: LaunchConfig) -> Ide
         && config.request == "launch"
         && let Ok(project) = host.project(window)
     {
-        super::python::prepare_debug(&mut config, &super::python::paths(&project))?;
+        let extra = config.extra_json.as_deref().and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+        let (content, source) = super::python::root_flags(extra.as_ref());
+        super::python::prepare_debug(&mut config, &super::python::paths(&project, content, source))?;
     }
     let label = window;
     let (sink, flush_output) = output::coalescing_sink(host.window_sink(label));

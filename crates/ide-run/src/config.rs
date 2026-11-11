@@ -95,6 +95,10 @@ struct FileConfig {
     include_system_env: bool,
     #[serde(default, alias = "envFiles")]
     env_files: Vec<String>,
+    #[serde(default = "yes", alias = "pythonContentRoots")]
+    python_content_roots: bool,
+    #[serde(default = "yes", alias = "pythonSourceRoots")]
+    python_source_roots: bool,
     #[serde(alias = "stdinFile")]
     stdin_file: Option<String>,
     #[serde(alias = "outputFile")]
@@ -171,6 +175,8 @@ fn convert(configs: Vec<FileConfig>, local: bool) -> Vec<RunConfig> {
                 local,
                 include_system_env: c.include_system_env,
                 env_files: c.env_files.into_iter().filter(|f| !f.trim().is_empty()).collect(),
+                python_content_roots: c.python_content_roots,
+                python_source_roots: c.python_source_roots,
                 stdin_file: non_empty(c.stdin_file),
                 output_file: non_empty(c.output_file),
                 before_launch: c.before_launch.into_iter().filter(|t| !t.kind.is_empty()).collect(),

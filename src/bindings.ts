@@ -7505,6 +7505,17 @@ export type RunExtras_Deserialize = {
 	includeSystemEnv?: boolean,
 	/**  `.env` files (relative to the project root) loaded before `env`, in order. */
 	envFiles?: string[],
+	/**
+	 *  "Add content roots to PYTHONPATH": the project's content roots go on the
+	 *  Python import path. Unset means on, which is what every configuration had
+	 *  before the switch existed.
+	 */
+	pythonContentRoots?: boolean,
+	/**
+	 *  "Add source roots to PYTHONPATH": the source and test roots set in Project
+	 *  Structure go on the import path too.
+	 */
+	pythonSourceRoots?: boolean,
 	/**  "Redirect input from": the process reads this file as stdin. */
 	stdinFile?: string | null,
 	/**  "Save console output to file" (overwritten on each run). */
@@ -7549,6 +7560,17 @@ export type RunExtras_Serialize = {
 	includeSystemEnv?: boolean,
 	/**  `.env` files (relative to the project root) loaded before `env`, in order. */
 	envFiles?: string[],
+	/**
+	 *  "Add content roots to PYTHONPATH": the project's content roots go on the
+	 *  Python import path. Unset means on, which is what every configuration had
+	 *  before the switch existed.
+	 */
+	pythonContentRoots?: boolean,
+	/**
+	 *  "Add source roots to PYTHONPATH": the source and test roots set in Project
+	 *  Structure go on the import path too.
+	 */
+	pythonSourceRoots?: boolean,
 	/**  "Redirect input from": the process reads this file as stdin. */
 	stdinFile?: string | null,
 	/**  "Save console output to file" (overwritten on each run). */
