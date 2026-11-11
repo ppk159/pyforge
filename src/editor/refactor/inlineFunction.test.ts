@@ -412,7 +412,7 @@ describe("planInlineFunction", () => {
     const v = editor(src, src.indexOf("x = tag(v)") + 5);
     const plan = await planInlineFunction(v);
     if (typeof plan === "string") throw new Error(plan);
-    expect(plan.prelude!.renamed).toEqual([{ from: "_sz", to: "_sz_1" }]);
+    expect(plan.renamed).toEqual([{ from: "_sz", to: "_sz_1" }]);
     // Both the declaration and the returned expression use the new name.
     expect(plan.prelude!.text).toContain("_sz_1 = 64");
     expect(plan.text).toContain("_sz_1");
@@ -505,7 +505,7 @@ describe("planInlineFunction", () => {
     expect(plan.prelude!.text).toBe('if a < 0:\n    raise ValueError("neg")\nfor i in b:\n    use(i)\n');
   });
 
-  it("refuses a body that returns from more than one place", async () => {
+  it("inlines a body with several returns into an assignment", async () => {
     const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
     H.text = src;
     outlineOf("f");
@@ -517,14 +517,119 @@ describe("planInlineFunction", () => {
       ["block", "        return 1"],
       ["return_statement", "        return 1"],
       ["return_statement", "    return 0"],
+      ["expression_statement", "y = f(a)"],
+      ["assignment", "y = f(a)"],
       ["call", "f(a)", 0, "right"],
       ["identifier", "f", 0, "function"],
       ["argument_list", "(a)", 0, "arguments"],
     ]);
     const v = editor(src, src.indexOf("f(a)") + 1);
-    // The branch itself is movable; two returns need the caller's control flow
-    // rewritten, which this path does not do.
-    expect(await planInlineFunction(v)).toBe("the declaration returns from more than one place");
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    // Each `return` becomes an assignment plus a way out; the wrapper is what the
+    // `break` comes back to, so the caller's next statement still runs.
+    expect(plan.text).toBe(
+      ["while True:", "    if a:", "        y = 1", "        break", "    y = 0", "    break"].join("\n"),
+    );
+    expect(plan.prelude).toBeNull();
+  });
+
+  it("gives a body that can run off its end a way out", async () => {
+    // Without the trailing `break` the wrapper would spin forever when the
+    // declaration falls through, which returned None.
+    const src = ["def f(x):", "    if x:", "        return 1", "", "y = f(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("f");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def f(x):\n    if x:\n        return 1"],
+      ["block", "    if x:\n        return 1", 0, "body"],
+      ["if_statement", "    if x:\n        return 1"],
+      ["block", "        return 1"],
+      ["return_statement", "        return 1"],
+      ["expression_statement", "y = f(a)"],
+      ["assignment", "y = f(a)"],
+      ["call", "f(a)", 0, "right"],
+      ["identifier", "f", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("f(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe(
+      ["while True:", "    if a:", "        y = 1", "        break", "    y = None", "    break"].join("\n"),
+    );
+  });
+
+  it("keeps the returns when the call is itself a return", async () => {
+    // `return call` needs no wrapper: the body's returns return from the caller's
+    // function, which is what the call did.
+    const src = [
+      "def f(x):",
+      "    if x:",
+      "        return 1",
+      "    return 0",
+      "",
+      "def g(v):",
+      "    return f(v)",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("f");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def f(x):\n    if x:\n        return 1\n    return 0"],
+      ["block", "    if x:\n        return 1\n    return 0", 0, "body"],
+      ["if_statement", "    if x:\n        return 1"],
+      ["block", "        return 1"],
+      ["return_statement", "        return 1"],
+      ["return_statement", "    return 0"],
+      ["function_definition", "def g(v):\n    return f(v)"],
+      ["block", "    return f(v)", 0, "body"],
+      ["return_statement", "    return f(v)"],
+      ["call", "f(v)"],
+      ["identifier", "f", 0, "function"],
+      ["argument_list", "(v)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("f(v)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe(["    if v:", "        return 1", "    return 0"].join("\n"));
+  });
+
+  it("refuses a return that sits inside one of the body's own loops", async () => {
+    const src = [
+      "def f(xs):",
+      "    for x in xs:",
+      "        if x:",
+      "            return x",
+      "    return 0",
+      "",
+      "y = f(a)",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("f");
+    const body = "    for x in xs:\n        if x:\n            return x\n    return 0";
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def f(xs):\n" + body],
+      ["block", body, 0, "body"],
+      ["for_statement", "    for x in xs:\n        if x:\n            return x"],
+      ["block", "        if x:\n            return x"],
+      ["if_statement", "        if x:\n            return x"],
+      ["block", "            return x"],
+      ["return_statement", "            return x"],
+      ["return_statement", "    return 0"],
+      ["expression_statement", "y = f(a)"],
+      ["assignment", "y = f(a)"],
+      ["call", "f(a)", 0, "right"],
+      ["identifier", "f", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("f(a)") + 1);
+    // `break` would leave the body's own loop rather than the wrapper.
+    expect(await planInlineFunction(v)).toBe("the declaration returns from inside a loop");
   });
 
   it("refuses a generator, a coroutine and a decorated function", async () => {
@@ -731,17 +836,31 @@ describe("inlineFunctionFallback", () => {
   });
 
   it("reports a refusal as handled, leaving the document alone", async () => {
-    const src = ["def f(x):", "    if x:", "        return 1", "    return 0", "", "y = f(a)", ""].join("\n");
+    const src = [
+      "def f(xs):",
+      "    for x in xs:",
+      "        if x:",
+      "            return x",
+      "    return 0",
+      "",
+      "y = f(a)",
+      "",
+    ].join("\n");
     H.text = src;
     outlineOf("f");
+    const body = "    for x in xs:\n        if x:\n            return x\n    return 0";
     tree([
       ["module", src.trimEnd()],
-      ["function_definition", "def f(x):\n    if x:\n        return 1\n    return 0"],
-      ["block", "    if x:\n        return 1\n    return 0", 0, "body"],
-      ["if_statement", "    if x:\n        return 1"],
-      ["block", "        return 1"],
-      ["return_statement", "        return 1"],
+      ["function_definition", "def f(xs):\n" + body],
+      ["block", body, 0, "body"],
+      ["for_statement", "    for x in xs:\n        if x:\n            return x"],
+      ["block", "        if x:\n            return x"],
+      ["if_statement", "        if x:\n            return x"],
+      ["block", "            return x"],
+      ["return_statement", "            return x"],
       ["return_statement", "    return 0"],
+      ["expression_statement", "y = f(a)"],
+      ["assignment", "y = f(a)"],
       ["call", "f(a)", 0, "right"],
       ["identifier", "f", 0, "function"],
       ["argument_list", "(a)", 0, "arguments"],
@@ -749,6 +868,6 @@ describe("inlineFunctionFallback", () => {
     const v = editor(src, src.indexOf("f(a)") + 1);
     expect(await inlineFunctionFallback(v)).toBe(true);
     expect(v.state.doc.toString()).toBe(src);
-    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("returns from more than one place"));
+    expect(showHint).toHaveBeenCalledWith(v, expect.stringContaining("returns from inside a loop"));
   });
 });
