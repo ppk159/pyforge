@@ -21,7 +21,6 @@ import { docOf } from "@/editor/lsp/lsp";
 import { offsetsToRange } from "@/editor/lsp/positions";
 import { showHint } from "@/editor/lsp/hint";
 import {
-  assignmentWindow,
   chainAt,
   duplicationRunsElsewhere,
   insideWindow,
@@ -57,10 +56,36 @@ function mayRunSomething(kind: string, text: string): boolean {
 /** Declarations whose body runs later, so inlining into them moves evaluation. */
 const FUNCTION_NODE = /^(function_definition|lambda|decorated_definition)$/;
 
+/** Node kinds that stand on their own: a write inside one of these owns its line. */
+const STATEMENT_KIND = new Set([
+  "expression_statement",
+  "return_statement",
+  "assignment",
+  "augmented_assignment",
+  "if_statement",
+  "for_statement",
+  "while_statement",
+  "with_statement",
+  "try_statement",
+  "raise_statement",
+  "assert_statement",
+  "delete_statement",
+  "import_statement",
+  "import_from_statement",
+  "pass_statement",
+  "break_statement",
+  "continue_statement",
+]);
+
 export interface InlinePlan {
   /** The declaration's lines, including the trailing line break. */
   declFrom: number;
   declTo: number;
+  /**
+   * Whether the declaration must stay: a use outside this assignment's window
+   * still needs the name to be bound when it runs.
+   */
+  keepDeclaration: boolean;
   /** The initializer text, trimmed. */
   text: string;
   /** Uses to replace, in document order. */
@@ -178,6 +203,60 @@ async function insideNestedFunction(p: Prepared, use: Span, declaration: number)
 }
 
 /**
+ * The end of the statement `write` belongs to.
+ *
+ * A read inside that statement still sees the value from before the write: Python
+ * evaluates the whole right-hand side before binding anything. So
+ * `x = int(x)` reads the old `x`, and that read belongs to the earlier assignment.
+ */
+async function statementEndOf(p: Prepared, write: Span): Promise<number> {
+  const chain = await chainAt(p.ctx, offsetsToRange(p.doc, write.from, write.to)).catch(() => null);
+  const statement = chain?.find((n) => STATEMENT_KIND.has(n.kind));
+  return statement ? spanOf(p.doc, statement).to : write.to;
+}
+
+/**
+ * The range in which this assignment's value is what a read sees.
+ *
+ * It ends at the next write — but not before the end of the statement that write
+ * is in, because a read inside `x = f(x)` is evaluated before the new value is
+ * bound.
+ */
+async function windowOf(p: Prepared, declaration: Span, writes: Span[], scopeTo: number): Promise<Span> {
+  const from = declaration.to;
+  const next = writes.filter((w) => w.from >= from).sort((a, b) => a.from - b.from)[0];
+  const to = next ? await statementEndOf(p, next) : scopeTo;
+  return { from, to: Math.min(Math.max(to, from), scopeTo) };
+}
+
+/**
+ * Whether every use past the window is certainly preceded by a later write.
+ *
+ * A write and a use that are both direct children of the same block run in order:
+ * nothing can branch between them, so the use cannot read this assignment's value.
+ * Any other arrangement is refused, because the use might reach back here on a
+ * path that skips the later write.
+ */
+async function laterWriteAlwaysRuns(p: Prepared, uses: Span[], writes: Span[]): Promise<boolean> {
+  /** The innermost block holding `at`, as an identity. */
+  const blockOf = async (at: number): Promise<string | null> => {
+    const chain = await chainAt(p.ctx, offsetsToRange(p.doc, at, at)).catch(() => null);
+    const block = chain?.find((n) => n.kind === "block" || n.kind === "module");
+    if (!block) return null;
+    const span = spanOf(p.doc, block);
+    return `${block.kind}:${span.from}`;
+  };
+  for (const use of uses) {
+    // The last write that ends before the use starts.
+    const before = writes.filter((w) => w.to <= use.from).sort((a, b) => b.to - a.to)[0];
+    if (!before) return false;
+    const [atWrite, atUse] = [await blockOf(before.from), await blockOf(use.from)];
+    if (!atWrite || atWrite !== atUse) return false;
+  }
+  return true;
+}
+
+/**
  * Everything that can make the refactoring unsafe is checked before any edit.
  * Returns the reason instead of a plan when it cannot be done.
  */
@@ -224,34 +303,47 @@ export async function planInline(view: EditorView): Promise<InlinePlan | string>
   }
   if (!uses.length) return `'${symbol.name}' is never used`;
 
-  // Reassignment is fine as long as every use of *this* assignment happens before
-  // the next write: then inlining cannot change which value a use sees.
+  // A variable written more than once still has an inlinable range: from this
+  // assignment to the next write. Uses inside that window see this value; uses
+  // after a later write see that one, and are left alone. Where a use outside the
+  // window could reach back to this assignment (nothing else assigned on some
+  // path), the declaration stays, so the name is still bound when it runs.
   const scope = spanOf(p.doc, { range: symbol.scope });
-  const window = assignmentWindow(decl.lines, writes, scope.to);
-  const outside = uses.filter((u) => !insideWindow(u, window));
-  if (outside.length) {
-    return `'${symbol.name}' is reassigned before these uses; only a variable assigned once can be inlined`;
+  const window = await windowOf(p, decl.lines, writes, scope.to);
+  const inWindow = uses.filter((u) => insideWindow(u, window));
+  const beyond = uses.filter((u) => !insideWindow(u, window));
+  if (!inWindow.length) {
+    return `'${symbol.name}' is not read between this assignment and the next write to it`;
   }
 
   const text = doc.sliceString(decl.init.from, decl.init.to).trim();
   if (!text) return "the declaration has no initializer";
+  const mayRun = mayRunSomething(decl.initKind, text);
 
   // Duplicating an expression that runs something is safe only when the copies
   // are adjacent: nothing else runs between them, so the side effects keep their
   // order and count. Anything in between could observe or change the difference.
-  if (duplicationRunsElsewhere(uses.length, mayRunSomething(decl.initKind, text), uses, doc.toString())) {
-    return `'${symbol.name}' is used ${uses.length} times and its initializer may have side effects`;
+  // Keeping the declaration adds one more run at its own place, which is only
+  // adjacent when nothing is inlined at all.
+  if (duplicationRunsElsewhere(inWindow.length, mayRun, inWindow, doc.toString())) {
+    return `'${symbol.name}' is used ${inWindow.length} times and its initializer may have side effects`;
+  }
+  if (beyond.length && mayRun) {
+    return `'${symbol.name}' is used ${inWindow.length + 1} times and its initializer may have side effects`;
   }
 
   // Moving the expression to a use must not cross a change to what it reads.
-  const changed = await firstChangedDependency(p, text, decl.lines.to, uses[uses.length - 1]!.to);
+  const changed = await firstChangedDependency(p, text, decl.lines.to, inWindow[inWindow.length - 1]!.to);
   if (changed) return `'${changed}' changes between the declaration and the use of '${symbol.name}'`;
 
   return {
     declFrom: decl.lines.from,
     declTo: decl.lines.to,
+    // Uses outside this assignment's window still need the name to be bound,
+    // unless a later write certainly runs before every one of them.
+    keepDeclaration: beyond.length > 0 && !(await laterWriteAlwaysRuns(p, beyond, writes)),
     text,
-    uses,
+    uses: inWindow,
     parens: !ATOM_NODE.test(decl.initKind),
     name: symbol.name,
   };
@@ -263,10 +355,9 @@ export function replacementFor(plan: InlinePlan): string {
 }
 
 function changesFor(plan: InlinePlan, state: EditorState): ChangeSet {
-  return state.changes([
-    ...plan.uses.map((u) => ({ from: u.from, to: u.to, insert: replacementFor(plan) })),
-    { from: plan.declFrom, to: plan.declTo, insert: "" },
-  ]);
+  const edits = plan.uses.map((u) => ({ from: u.from, to: u.to, insert: replacementFor(plan) }));
+  if (!plan.keepDeclaration) edits.push({ from: plan.declFrom, to: plan.declTo, insert: "" });
+  return state.changes(edits);
 }
 
 function apply(p: Prepared, plan: InlinePlan) {

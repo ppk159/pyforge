@@ -174,7 +174,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("replacementFor", () => {
-  const base = { declFrom: 0, declTo: 0, text: "a + 1", uses: [], name: "x" };
+  const base = { declFrom: 0, declTo: 0, keepDeclaration: false, text: "a + 1", uses: [], name: "x" };
   it("wraps an expression that binds looser than its context", () => {
     expect(replacementFor({ ...base, parens: true })).toBe("(a + 1)");
   });
@@ -267,9 +267,8 @@ describe("planInline", () => {
     ]);
     local({ name: "x", def: first, refs: [second, src.indexOf("return x") + 7] });
     const v = editor(src, first + 1);
-    expect(await planInline(v)).toBe(
-      "'x' is reassigned before these uses; only a variable assigned once can be inlined",
-    );
+    // `x = 1` is dead: the next write comes before anything reads it.
+    expect(await planInline(v)).toBe("'x' is not read between this assignment and the next write to it");
   });
 
   it("inlines a variable that is reassigned only after its last use", async () => {
@@ -301,6 +300,103 @@ describe("planInline", () => {
     expect(plan.text).toBe("1");
     // Only the use before the reassignment is replaced.
     expect(plan.uses).toHaveLength(1);
+  });
+
+  it("inlines into the read that the next assignment makes of the old value", async () => {
+    // `x = int(x)` evaluates its right-hand side before binding, so that read is
+    // the previous value's — the earlier assignment reaches it.
+    const src = ["def f(raw):", "    x = raw", "    x = int(x)", "    return x", ""].join("\n");
+    H.text = src;
+    const first = src.indexOf("x = raw");
+    const second = src.indexOf("x = int(x)");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", "    x = raw\n    x = int(x)\n    return x", 0, "body"],
+      ["expression_statement", "    x = raw"],
+      ["assignment", "x = raw"],
+      ["identifier", "x", 0, "left"],
+      ["identifier", "raw", 1, "right"],
+      ["expression_statement", "    x = int(x)"],
+      ["assignment", "x = int(x)"],
+      ["identifier", "x", 1, "left"],
+      ["call", "int(x)", 0, "right"],
+      ["return_statement", "    return x"],
+    ]);
+    // The write on the second line counts as a reference too, and is what ends
+    // the first assignment's window.
+    local({ name: "x", def: first, refs: [second, second + 8, src.indexOf("return x") + 7] });
+    const v = editor(src, first + 1);
+    const plan = await planInline(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("raw");
+    expect(plan.uses).toHaveLength(1);
+  });
+
+  it("keeps the declaration when a later use still needs the name", async () => {
+    // `x` is read before and after the second assignment. The first use sees the
+    // first value and can take it; the last use may still read the first value on
+    // the path where the branch does not run, so the name stays bound.
+    const src = ["def f(c):", "    x = 1", "    use(x)", "    if c:", "        x = 2", "    return x", ""].join("\n");
+    H.text = src;
+    const first = src.indexOf("x = 1");
+    const second = src.indexOf("x = 2");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", "    x = 1\n    use(x)\n    if c:\n        x = 2\n    return x", 0, "body"],
+      ["expression_statement", "    x = 1"],
+      ["assignment", "x = 1"],
+      ["identifier", "x", 0, "left"],
+      ["integer", "1", 0, "right"],
+      ["expression_statement", "    use(x)"],
+      ["call", "use(x)"],
+      ["identifier", "x", 1],
+      ["if_statement", "    if c:\n        x = 2"],
+      ["block", "        x = 2"],
+      ["expression_statement", "        x = 2"],
+      ["assignment", "x = 2"],
+      ["identifier", "x", 2, "left"],
+      ["return_statement", "    return x"],
+    ]);
+    local({ name: "x", def: first, refs: [src.indexOf("use(x)") + 4, second, src.indexOf("return x") + 7] });
+    const v = editor(src, first + 1);
+    const plan = await planInline(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("1");
+    expect(plan.uses).toHaveLength(1);
+    expect(plan.keepDeclaration).toBe(true);
+  });
+
+  it("drops the declaration when no use reaches past it", async () => {
+    const src = ["def f():", "    x = 1", "    use(x)", "    x = 2", "    return x", ""].join("\n");
+    H.text = src;
+    const first = src.indexOf("x = 1");
+    const second = src.indexOf("x = 2");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", src.trimEnd()],
+      ["block", "    x = 1\n    use(x)\n    x = 2\n    return x", 0, "body"],
+      ["expression_statement", "    x = 1"],
+      ["assignment", "x = 1"],
+      ["identifier", "x", 0, "left"],
+      ["integer", "1", 0, "right"],
+      ["expression_statement", "    use(x)"],
+      ["call", "use(x)"],
+      ["identifier", "x", 1],
+      ["expression_statement", "    x = 2"],
+      ["assignment", "x = 2"],
+      ["identifier", "x", 2, "left"],
+      ["return_statement", "    return x"],
+    ]);
+    local({ name: "x", def: first, refs: [src.indexOf("use(x)") + 4, second, src.indexOf("return x") + 7] });
+    const v = editor(src, first + 1);
+    const plan = await planInline(v);
+    if (typeof plan === "string") throw new Error(plan);
+    // The only use in range is before the next write, and the use after it belongs
+    // to `x = 2`, so nothing is left needing this declaration.
+    expect(plan.uses).toHaveLength(1);
+    expect(plan.keepDeclaration).toBe(false);
   });
 
   it("refuses duplicating an initializer that may have side effects", async () => {
