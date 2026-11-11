@@ -16,6 +16,15 @@ import { formatArgs, parseArgs } from "./configs";
 import { commandName } from "./commandName";
 import { pythonExtras, pythonPathFields, resolveInterpreter } from "./pythonTypes";
 
+/**
+ * A uvicorn target: `<module>:<variable>` or a bare `<module>`.
+ *
+ * The module part may be empty while the form is being filled in — `:app` — and is
+ * recognised here so such a configuration opens in the form, where the missing module
+ * shows as an error, instead of falling back to a raw command line.
+ */
+const TARGET = /^[A-Za-z_][\w.]*(:[\w.()]*)?$|^:[\w.()]*$/;
+
 const interpreterField: RunConfigTypeField = {
   key: "interpreter",
   label: "Interpreter",
@@ -38,7 +47,13 @@ const moduleField: RunConfigTypeField = {
   required: true,
   placeholder: "e.g. webapp.fastapi_app",
   hint: "The importable module holding the app — a dotted name, not a file path",
-  validate: (value) => (/\.py$/.test(value) ? "Use the dotted module name (webapp.app), not a file path" : null),
+  validate: (value) => {
+    const module = value.trim();
+    if (!module) return "A module is required: uvicorn runs `<module>:<application>`";
+    if (/\.py$/.test(module)) return "Use the dotted module name (webapp.app), not a file path";
+    if (/:/.test(module)) return "Put the application variable in its own field, not after a colon";
+    return null;
+  },
 };
 
 const appField: RunConfigTypeField = {
@@ -135,13 +150,15 @@ function fastapiParams(c: RunConfig): Record<string, string> | null {
   // The target is a module name, with or without `:variable`. It cannot be told from a
   // flag's value by "does not start with a dash" — `--port 8000` would match — so it is
   // recognised by its own shape.
-  const at = rest.findIndex((a) => /^[A-Za-z_][\w.]*(:[\w.()]+)?$/.test(a));
+  const at = rest.findIndex((a) => TARGET.test(a));
   if (at < 0) return null;
   const target = rest[at]!;
   const colon = target.lastIndexOf(":");
   const module = colon < 0 ? target : target.slice(0, colon);
-  const appVar = colon < 0 ? "app" : target.slice(colon + 1);
-  if (!module) return null;
+  // An empty module is kept, not refused: it is a configuration with a missing field,
+  // and the form is where that shows (with the reason). The target is still the target,
+  // so what runs does not change.
+  const appVar = (colon < 0 ? "" : target.slice(colon + 1)) || "app";
   return {
     interpreter: c.command,
     module,

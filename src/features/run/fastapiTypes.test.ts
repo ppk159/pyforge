@@ -107,6 +107,30 @@ describe("the FastAPI Server configuration", () => {
     expect(fastapiType.paramsFrom!(config({ args: ["-m", "uvicorn", "--port", "8000"] }))).toBeNull();
   });
 
+  it("opens a configuration whose module is missing, instead of a raw command line", () => {
+    // `python3 -m uvicorn :app` is what an empty Module produces. Reading it back keeps
+    // the form usable — the missing module then shows as a field error, which is where a
+    // user can fix it. Recognising the target by "no leading dash" alone did not, so the
+    // form fell back to a command line that gave no hint about the empty field.
+    const params = fastapiType.paramsFrom!(config({ args: ["-m", "uvicorn", ":app"] }));
+    expect(params).toMatchObject({ module: "", appVar: "app" });
+  });
+
+  it("asks for the module when it is empty", () => {
+    const field = fastapiType.fields.find((f) => f.key === "module")!;
+    expect(field.required).toBe(true);
+    expect(field.validate!("", {})).toMatch(/module is required/);
+    expect(field.validate!("webapp:app", {})).toMatch(/own field/);
+    expect(field.validate!("webapp.api", {})).toBeNull();
+  });
+
+  it("round-trips an empty module so the form stays editable", () => {
+    const params = { interpreter: "python3", module: "", appVar: "app" };
+    const line = fastapiType.commandLine!(params)!;
+    expect(line.args).toEqual(["-m", "uvicorn", ":app"]);
+    expect(fastapiType.paramsFrom!(config({ args: line.args }))).toMatchObject({ module: "" });
+  });
+
   it("rejects a file path where a module name belongs", () => {
     const field = fastapiType.fields.find((f) => f.key === "module")!;
     expect(field.validate!("src/webapp/fastapi_app.py", {})).toMatch(/dotted module name/);
