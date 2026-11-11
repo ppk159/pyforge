@@ -28,7 +28,7 @@ const superItem: Omit<HierarchyItem, "name" | "path"> = {
   selectionRange: { start: { line: 0, col: 0 }, end: { line: 0, col: 1 } },
   fromRanges: [],
 };
-const SCRATCH = "/Users/me/Library/Application Support/ai.l0ng.openidea/scratches";
+const SCRATCH = "/Users/me/Library/Application Support/ai.pyforge.ide/scratches";
 
 const cfg = (over: Partial<RunConfig> & { id: string; kind: string }): RunConfig => ({
   name: over.id,
@@ -141,6 +141,22 @@ describe("single-file producers (scratches)", () => {
     expect(produceContext(input, { ...ALL, bun: true })!.config!.debugAdapter).toBeNull();
     // Not for scratches outside the project.
     expect(run(scratch("x.ts"), { ...ALL, deno: true })).toMatchObject({ command: "/bin/node" });
+  });
+
+  it("Python: a Windows interpreter path is not prefixed with the root again", () => {
+    // A module run in another directory prepends the project root to a venv-relative
+    // interpreter. An absolute one already has it — and on Windows "absolute" means a
+    // drive letter, so a leading-`/` test alone prefixed it twice and Windows then
+    // refused the path with "the filename syntax is incorrect".
+    const win = "C:/work/app/.venv/Scripts/python.exe";
+    const venv = [cfg({ id: "python:module:app", kind: "python", command: win, args: ["-m", "app"] })];
+    const produced = produceFile(
+      { path: "C:/work/app/src/app/__main__.py", root: "C:/work/app", content: "", configs: venv },
+      ALL,
+    );
+    const command = produced?.config?.command ?? "";
+    expect(command).not.toContain("C:/work/app/C:");
+    expect(command.endsWith(".venv/Scripts/python.exe")).toBe(true);
   });
 
   it("Python: the interpreter from settings, then the project's, then python3", () => {

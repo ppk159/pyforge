@@ -1,12 +1,12 @@
-//! Installing the `openidea` command: a symlink on `PATH` to the launcher
+//! Installing the `pyforge` command: a symlink on `PATH` to the launcher
 //! script in a macOS bundle, or a wrapper in a user's bin directory.
 
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const COMMAND: &str = "openidea";
-const LAUNCHER: &str = "Contents/Resources/bin/openidea";
+pub const COMMAND: &str = "pyforge";
+const LAUNCHER: &str = "Contents/Resources/bin/pyforge";
 const SYSTEM_DIR: &str = "/usr/local/bin";
 
 /// The launcher script of the bundle whose executable is `exe`; `None` outside a bundle.
@@ -45,8 +45,8 @@ fn is_launcher_link(link: &Path) -> bool {
     std::fs::read_link(link).is_ok_and(|target| target.ends_with(LAUNCHER))
 }
 
-/// Links `dir/openidea` to `launcher`, asking for administrator rights when `dir`
-/// is not writable. Refuses to replace an `openidea` that is not ours.
+/// Links `dir/pyforge` to `launcher`, asking for administrator rights when `dir`
+/// is not writable. Refuses to replace one that is not ours.
 pub fn install(launcher: &Path, dir: &Path) -> io::Result<PathBuf> {
     let link = dir.join(COMMAND);
     if link.symlink_metadata().is_ok() && !is_launcher_link(&link) {
@@ -116,7 +116,7 @@ fn applescript_escape(s: &str) -> String {
     s.replace('\\', r"\\").replace('"', "\\\"")
 }
 
-const WRAPPER_MARKER: &str = "OpenIDEA command launcher v1";
+const WRAPPER_MARKER: &str = "PyForge command launcher v1";
 
 /// AppImages remount their executable on every launch. Keep the original image path.
 pub fn stable_executable(exe: &Path, appimage: Option<&Path>) -> io::Result<PathBuf> {
@@ -128,7 +128,7 @@ pub fn stable_executable(exe: &Path, appimage: Option<&Path>) -> io::Result<Path
 }
 
 pub fn wrapper_path(dir: &Path, windows: bool) -> PathBuf {
-    dir.join(if windows { "openidea.cmd" } else { COMMAND })
+    dir.join(if windows { "pyforge.cmd" } else { COMMAND })
 }
 
 fn wrapper(exe: &Path, windows: bool) -> io::Result<String> {
@@ -139,7 +139,7 @@ fn wrapper(exe: &Path, windows: bool) -> io::Result<String> {
     }
     Ok(if windows {
         format!(
-            "@echo off\r\nrem {WRAPPER_MARKER}\r\nsetlocal DisableDelayedExpansion\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"_openidea_codepage=%%c\"\r\n\"%SystemRoot%\\System32\\chcp.com\" 65001 >nul\r\n\"{}\" --cli %*\r\nset \"_openidea_exit=%errorlevel%\"\r\n\"%SystemRoot%\\System32\\chcp.com\" %_openidea_codepage% >nul\r\nexit /b %_openidea_exit%\r\n",
+            "@echo off\r\nrem {WRAPPER_MARKER}\r\nsetlocal DisableDelayedExpansion\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"_pyforge_codepage=%%c\"\r\n\"%SystemRoot%\\System32\\chcp.com\" 65001 >nul\r\n\"{}\" --cli %*\r\nset \"_pyforge_exit=%errorlevel%\"\r\n\"%SystemRoot%\\System32\\chcp.com\" %_pyforge_codepage% >nul\r\nexit /b %_pyforge_exit%\r\n",
             exe.replace('%', "%%")
         )
     } else {
@@ -258,7 +258,7 @@ fn user_bin() -> io::Result<PathBuf> {
     } else {
         dirs::home_dir().map(|dir| dir.join(".local/bin"))
     }
-    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no user directory for the openidea command"))
+    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no user directory for the pyforge command"))
 }
 
 pub fn install_current() -> io::Result<Installation> {
@@ -343,7 +343,7 @@ mod wrapper_tests {
         let dir = tempfile::tempdir().unwrap();
         let image = dir.path().join("OpenIDEA.AppImage");
         std::fs::write(&image, "image").unwrap();
-        assert_eq!(stable_executable(Path::new("/tmp/.mount_App/usr/bin/openidea"), Some(&image)).unwrap(), image);
+        assert_eq!(stable_executable(Path::new("/tmp/.mount_App/usr/bin/pyforge"), Some(&image)).unwrap(), image);
         assert_eq!(stable_executable(&image, None).unwrap(), image);
         assert!(stable_executable(Path::new("missing"), None).is_err());
     }
@@ -408,7 +408,7 @@ mod wrapper_tests {
         assert_eq!(output.status.code(), Some(7));
         assert_eq!(String::from_utf8(output.stdout).unwrap().replace("\r\n", "\n"), "--cli\na b\n中文\nx&y\n");
         let check = dir.path().join("check.cmd");
-        std::fs::write(&check, "@echo off\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"before=%%c\"\r\ncall \"%~dp0bin\\openidea.cmd\" example\r\nset \"code=%errorlevel%\"\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"after=%%c\"\r\nif not \"%before%\"==\"%after%\" exit /b 99\r\nexit /b %code%\r\n").unwrap();
+        std::fs::write(&check, "@echo off\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"before=%%c\"\r\ncall \"%~dp0bin\\pyforge.cmd\" example\r\nset \"code=%errorlevel%\"\r\nfor /f \"tokens=2 delims=:\" %%c in ('\"%SystemRoot%\\System32\\chcp.com\"') do set \"after=%%c\"\r\nif not \"%before%\"==\"%after%\" exit /b 99\r\nexit /b %code%\r\n").unwrap();
         let output = std::process::Command::new("cmd.exe")
             .current_dir(dir.path())
             .args(["/d", "/s", "/c"])
@@ -426,7 +426,7 @@ mod tests {
 
     fn bundle(root: &Path) -> (PathBuf, PathBuf) {
         let app = root.join("OpenIDEA.app");
-        let exe = app.join("Contents/MacOS/openidea");
+        let exe = app.join("Contents/MacOS/pyforge");
         let launcher = app.join(LAUNCHER);
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::create_dir_all(launcher.parent().unwrap()).unwrap();
@@ -440,7 +440,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (exe, launcher) = bundle(dir.path());
         assert_eq!(bundled_launcher(&exe), Some(launcher));
-        assert_eq!(bundled_launcher(&dir.path().join("target/debug/openidea")), None);
+        assert_eq!(bundled_launcher(&dir.path().join("target/debug/pyforge")), None);
         assert!(translocated(Path::new("/private/var/folders/x/AppTranslocation/ABC/d/OpenIDEA.app")));
     }
 

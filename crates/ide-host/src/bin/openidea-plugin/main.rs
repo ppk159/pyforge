@@ -425,7 +425,7 @@ fn plugins_dir() -> Result<PathBuf, String> {
         return Ok(PathBuf::from(dir));
     }
     dirs::data_dir()
-        .map(|d| d.join("ai.l0ng.openidea").join("plugins"))
+        .map(|d| d.join("ai.pyforge.ide").join("plugins"))
         .ok_or_else(|| "cannot find the app data directory; set OPENIDEA_PLUGINS_DIR".into())
 }
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# The `openidea` command, linked onto PATH by "Install 'openidea' Command".
+# The `pyforge` command, linked onto PATH by "Install 'pyforge' Command".
 # Runs the app executable of this bundle in CLI mode (src-tauri/src/cli.rs).
 self=$0
 while [ -L "$self" ]; do
@@ -10,4 +10,4 @@ while [ -L "$self" ]; do
   esac
 done
 contents=$(cd "$(dirname "$self")/../.." && pwd -P) || exit 1
-exec "$contents/MacOS/openidea" --cli "$@"
+exec "$contents/MacOS/pyforge" --cli "$@"

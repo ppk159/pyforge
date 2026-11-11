@@ -208,7 +208,7 @@ fn add_managed_tools_to_path() {
     let _ = tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).try_init();
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return };
     // Like the app: adapters installed by OpenIDEA are found without being on PATH.
-    adapter::set_tools_root(home.join("Library/Application Support/ai.l0ng.openidea/tools"));
+    adapter::set_tools_root(home.join("Library/Application Support/ai.pyforge.ide/tools"));
 }
 
 /// The debuggee interpreter (`OPENIDEA_PYTHON`, e.g. one without debugpy).

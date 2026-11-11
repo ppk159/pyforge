@@ -163,10 +163,19 @@ function mkdirLine(dir: string, windows = false): string {
   return `(if not exist ${d} mkdir ${d})`;
 }
 
+/**
+ * Whether `path` is already absolute: a leading `/` (POSIX) or a drive letter
+ * (Windows). A Windows path such as `C:/x/.venv/Scripts/python.exe` is absolute
+ * even though it does not start with `/`.
+ */
+export function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[/]/.test(path);
+}
+
 /** Absolute directory of a configuration's working directory (a Go module). */
 export function goModuleDir(root: string, cwd: string | null): string {
   const rel = (cwd ?? "").replace(/^\.(?:\/|$)/, "").replace(/\/+$/, "");
-  if (rel.startsWith("/") || /^[A-Za-z]:\//.test(rel)) return rel;
+  if (isAbsolutePath(rel)) return rel;
   return rel ? `${root}/${rel}` : root;
 }
 
@@ -805,9 +814,11 @@ export function produceFile(input: ContextInput, env: ToolEnv): Produced | null 
       if (!py) return { name: s.file, scope: "file", missing: missing("python", s.file, ["python3", "python"]) };
       const module = pythonModule(input);
       if (module) {
-        // It runs in another directory: a venv-relative interpreter is relative to the project root.
+        // It runs in another directory: a venv-relative interpreter is relative to the
+        // project root, so it needs the root in front. An absolute one already has it —
+        // and on Windows that means a drive letter, not a leading `/`.
         const command =
-          input.root && py.command.includes("/") && !py.command.startsWith("/")
+          input.root && py.command.includes("/") && !isAbsolutePath(py.command)
             ? `${input.root}/${py.command}`
             : py.command;
         return {

@@ -1,4 +1,4 @@
-//! The `openidea` command: this executable in CLI mode (started by the bundle's
+//! The `pyforge` command: this executable in CLI mode (started by the bundle's
 //! launcher script with [`CLI_FLAG`]), the socket the app answers it on, and
 //! installing the command on `PATH`.
 
@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
-/// First argument from `Contents/Resources/bin/openidea`.
+/// First argument from `Contents/Resources/bin/pyforge`.
 const CLI_FLAG: &str = "--cli";
 /// How long a starting app has to open its socket.
 const START_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Runs as the `openidea` command when started with [`CLI_FLAG`]; returns the exit code.
+/// Runs as the `pyforge` command when started with [`CLI_FLAG`]; returns the exit code.
 pub fn run(identifier: &str) -> Option<i32> {
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() != Some(CLI_FLAG) {
@@ -27,7 +27,7 @@ pub fn run(identifier: &str) -> Option<i32> {
     Some(match client(identifier, &args) {
         Ok(()) => 0,
         Err(message) => {
-            eprintln!("openidea: {message}");
+            eprintln!("pyforge: {message}");
             1
         }
     })
@@ -101,13 +101,13 @@ fn send_when_started(socket: &Path, request: &Request) -> Result<Response, Strin
     }
 }
 
-/// `….app` of the bundle executable `exe` (`….app/Contents/MacOS/openidea`).
+/// `….app` of the bundle executable `exe` (`….app/Contents/MacOS/pyforge`).
 fn app_bundle(exe: &Path) -> Option<PathBuf> {
     let bundle = exe.parent()?.parent()?.parent()?;
     (cfg!(target_os = "macos") && bundle.extension().is_some_and(|e| e == "app")).then(|| bundle.to_path_buf())
 }
 
-/// Answers the `openidea` command for this app: its targets open like paths from Finder.
+/// Answers the `pyforge` command for this app: its targets open like paths from Finder.
 pub fn serve(app: &AppHandle, identifier: &str) {
     let Some(socket) = socket::socket_path(identifier) else { return };
     let app = app.clone();
@@ -131,7 +131,7 @@ pub fn serve(app: &AppHandle, identifier: &str) {
         }
     });
     if let Err(e) = served {
-        tracing::warn!("cannot listen for the openidea command on {}: {e}", socket.display());
+        tracing::warn!("cannot listen for the pyforge command on {}: {e}", socket.display());
     }
 }
 
@@ -139,7 +139,7 @@ fn install_error(e: std::io::Error) -> IdeError {
     if e.kind() == ErrorKind::Interrupted { IdeError::cancelled() } else { IdeError::internal(e.to_string()) }
 }
 
-/// Links the `openidea` command onto `PATH`; returns the link. Blocks while the
+/// Links the `pyforge` command onto `PATH`; returns the link. Blocks while the
 /// administrator password prompt is up.
 pub fn install() -> IdeResult<crate::commands::window::CliInstallation> {
     let result = ide_cli::install::install_current().map_err(install_error)?;
@@ -149,7 +149,7 @@ pub fn install() -> IdeResult<crate::commands::window::CliInstallation> {
     })
 }
 
-/// Removes every installed `openidea` command link; returns them.
+/// Removes every installed `pyforge` command link; returns them.
 pub fn uninstall() -> IdeResult<Vec<IpcPath>> {
     let links = ide_cli::install::uninstall_current().map_err(install_error)?;
     Ok(links.into_iter().map(Into::into).collect())
@@ -161,9 +161,9 @@ mod tests {
 
     #[test]
     fn bundle_of_the_app_executable() {
-        let exe = Path::new("/Applications/PyForge.app/Contents/MacOS/openidea");
+        let exe = Path::new("/Applications/PyForge.app/Contents/MacOS/pyforge");
         let expected = cfg!(target_os = "macos").then(|| PathBuf::from("/Applications/PyForge.app"));
         assert_eq!(app_bundle(exe), expected);
-        assert_eq!(app_bundle(Path::new("/repo/target/debug/openidea")), None);
+        assert_eq!(app_bundle(Path::new("/repo/target/debug/pyforge")), None);
     }
 }

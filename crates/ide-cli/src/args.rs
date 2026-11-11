@@ -1,11 +1,11 @@
-//! Command-line arguments of `openidea`.
+//! Command-line arguments of `pyforge`.
 
 use crate::Target;
 use std::path::Path;
 
 pub const USAGE: &str = "\
-Usage: openidea [options] [[--line <n>] [--column <n>] path[:line[:column]] ...]
-       openidea diff <left> <right>
+Usage: pyforge [options] [[--line <n>] [--column <n>] path[:line[:column]] ...]
+       pyforge diff <left> <right>
 
 Opens folders as projects and files in the editor of the running OpenIDEA,
 starting it if needed. Without paths, brings OpenIDEA to the front.

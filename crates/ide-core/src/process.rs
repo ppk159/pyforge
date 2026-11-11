@@ -590,7 +590,7 @@ mod tests {
                 }
             }
         }
-        let name = format!("Software\\ai.l0ng.openidea.registry-read-test-{}", std::process::id());
+        let name = format!("Software\\ai.pyforge.ide.registry-read-test-{}", std::process::id());
         let variable = format!("OPENIDEA_TEST_REGVAR_{}", std::process::id());
         let long = "x".repeat(600);
         let mut key: HKEY = std::ptr::null_mut();
