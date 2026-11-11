@@ -534,3 +534,67 @@ fn identifier_role_leaves_positional_arguments_alone() {
     let found = service().identifiers_named(&snap, "a", &none()).expect("identifiers");
     assert!(found.iter().all(|o| o.role != IdentifierRole::KeywordArgument), "{found:?}");
 }
+
+/// `match` capture patterns bind names, and the parts that are values do not.
+///
+/// The grammar wraps a binding in a `dotted_name`; the class of `case Point(...)`
+/// and the field name of `case Point(x=px)` have none, which is what the query
+/// relies on. Getting this wrong would rename a class or a field.
+#[test]
+fn python_match_patterns() {
+    let seq = "def f(v):\n    match v:\n        case [a, b]:\n            return a + b\n    return 0\n";
+    // Whole-word occurrences only: a is #1 in the pattern, #2 in the return.
+    assert_local("python", seq, "a", 1, 1, &[2]);
+    assert_local("python", seq, "b", 1, 1, &[2]);
+
+    let map = "def f(v):\n    match v:\n        case {\"k\": val}:\n            return val\n    return 0\n";
+    assert_local("python", map, "val", 1, 1, &[2]);
+
+    let kw = "def f(v):\n    match v:\n        case Point(x=px):\n            return px\n    return 0\n";
+    // The binding is `px`; the field name `x` names a member, not a variable.
+    assert_local("python", kw, "px", 1, 1, &[2]);
+    // The field name `x` is not a variable the case binds. The grammar gives the
+    // parts of `keyword_pattern` no fields, so it reads as unresolved rather than
+    // as a member; what matters is that it is not a local.
+    assert!(matches!(locals_at("python", kw, "x", 1), Locals::NotLocal { .. }));
+    // The class `Point` is named by the pattern, not bound by it.
+    assert!(matches!(locals_at("python", kw, "Point", 1), Locals::NotLocal { .. }));
+
+    let star = "def f(v):\n    match v:\n        case [first, *rest]:\n            return rest\n    return 0\n";
+    assert_local("python", star, "rest", 1, 1, &[2]);
+
+    // A guard reads the name the pattern bound.
+    let guard = "def f(v):\n    match v:\n        case x if x > 0:\n            return x\n    return 0\n";
+    assert_local("python", guard, "x", 1, 1, &[2, 3]);
+}
+
+/// A name a function declares `global` or `nonlocal` belongs to an outer scope,
+/// so nothing inside defines it.
+///
+/// Without this, `gv = 1` after `global gv` reads as a local definition; a
+/// refactoring would then treat the module variable as the function's own and
+/// write a local instead.
+#[test]
+fn python_global_and_nonlocal_are_not_locals() {
+    // `gv` occurs at: global gv, gv = 1, gv += 2, return gv.
+    let g = "def f():\n    global gv\n    gv = 1\n    gv += 2\n    return gv\n";
+    for nth in 1..=4 {
+        assert_eq!(assert_not_local("python", g, "gv", nth), NotLocalReason::TopLevel, "gv #{nth}");
+    }
+    // A name the function does define is still a local.
+    let mixed = "def f():\n    global gv\n    gv = 1\n    local = gv\n    return local\n";
+    assert_local("python", mixed, "local", 1, 1, &[2]);
+
+    // `nonlocal x` in the inner function rebinds the outer `x`; the outer one stays
+    // a local of `f`.
+    let n = "def f():\n    x = 1\n    def g():\n        nonlocal x\n        x = 2\n    return g\n";
+    assert_local("python", n, "x", 1, 1, &[]);
+    // Occurrences: x = 1 (#1), nonlocal x (#2), x = 2 (#3).
+    assert_eq!(assert_not_local("python", n, "x", 2), NotLocalReason::TopLevel, "nonlocal x");
+    assert_eq!(assert_not_local("python", n, "x", 3), NotLocalReason::TopLevel, "x in the inner scope");
+
+    // A nested function declaring its own `global` does not make the outer name a
+    // global.
+    let nested = "def f():\n    y = 1\n    def g():\n        global y\n        y = 2\n    return y\n";
+    assert_local("python", nested, "y", 1, 1, &[4]);
+}

@@ -132,5 +132,35 @@
 (as_pattern
   alias: (as_pattern_target) @local.definition.var)
 
+; `match` capture patterns bind a name, exactly like an assignment does.
+;
+; The grammar wraps every binding in a `dotted_name`, which is what separates it
+; from the parts that are values: in `case Point(x=px)` the class `Point` sits in
+; a `class_pattern` and the field name `x` in a `keyword_pattern` without a
+; `dotted_name`, while the binding `px` has one. Measured, not guessed:
+;
+;   case [a, b]        a  -> identifier < dotted_name < case_pattern
+;   case {"k": v}      v  -> identifier < dotted_name < case_pattern
+;   case x if ...      x  -> identifier < dotted_name < case_pattern
+;   case Point(a, b)   a  -> identifier < dotted_name < case_pattern < class_pattern
+;   case Point(x=px)   px -> identifier < dotted_name < keyword_pattern
+;   case [a, *rest]    rest -> identifier < splat_pattern < case_pattern
+;   --- not bindings ---
+;   case Point(...)    Point -> identifier < dotted_name < class_pattern
+;   case Point(x=..)   x     -> identifier < keyword_pattern
+(case_pattern
+  (dotted_name
+    (identifier) @local.definition.var))
+
+; `case Point(x=px)`: the binding is the keyword's value, not its name.
+(keyword_pattern
+  (dotted_name
+    (identifier) @local.definition.var))
+
+; `case [first, *rest]`.
+(case_pattern
+  (splat_pattern
+    (identifier) @local.definition.var))
+
 ; REFERENCES
 (identifier) @local.reference

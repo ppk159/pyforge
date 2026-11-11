@@ -45,18 +45,12 @@ const LANGUAGES = new Set(["python"]);
 const LEAVING = /\b(return|yield|await)\b/;
 /** Declarations that make a name belong to a scope other than its block. */
 const REBOUND = /\b(global|nonlocal)\b/;
-/**
- * Patterns the bundled Python scope query does not cover (measured with
- * `probe_dataflow.rs`): `match`/`case` bindings, and a starred assignment
- * target (`first, *rest = pair`) — `rest` comes back `Unresolved`, so it would
- * be skipped and the value silently lost.
- */
-const MATCH = /^\s*(match|case)\s+.+:\s*(#.*)?$/m;
 
 /**
- * A line whose left of `=` embeds `*name`: a starred assignment target. Read
- * as text because the scope query does not report one and the node API exposes
- * no children. `f(*args)` is not one: nothing precedes its `=`.
+ * A line whose left of `=` embeds `*name`: a starred assignment target. Read as
+ * text because the scope query does not report one and the node API exposes no
+ * children. `f(*args)` is not one (nothing precedes its `=`), and neither is a
+ * `case [a, *rest]` pattern (no `=` on the line).
  */
 function starredTarget(text: string): string | null {
   for (const line of text.split("\n")) {
@@ -132,7 +126,6 @@ export function wholeStatements(
   const text = doc.sliceString(from, to);
   if (LEAVING.test(text)) return "the selection contains return, yield or await";
   if (REBOUND.test(text)) return "the selection declares a global or nonlocal name";
-  if (MATCH.test(text)) return "the selection contains a match statement, which the syntax service does not resolve";
   const starred = starredTarget(text);
   if (starred) {
     return `the selection uses a starred assignment target ('*${starred}'), which the syntax service does not resolve`;

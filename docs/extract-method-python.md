@@ -67,7 +67,6 @@ def parse(p):
 |---|---|---|
 | 含 `return` / `yield` / `await` | `the selection contains return, yield or await` | 方法没法 return 给调用方；`yield`/`await` 还会改变调用的形态 |
 | 含 `global` / `nonlocal` 声明 | `the selection declares a global or nonlocal name` | 作用域查询会把这种名字报成局部定义（实测） |
-| 含 `match …:` / `case …:` | `the selection contains a match statement, which the syntax service does not resolve` | `locals.scm` 没有模式绑定的规则（实测），会漏参数 |
 | 含星号赋值目标 | `the selection uses a starred assignment target ('*rest'), which the syntax service does not resolve` | `rest` 查不到（实测），会丢输出 |
 
 星号**调用**不算星号目标：
@@ -77,12 +76,14 @@ first, *rest = pair     ← 拒绝
 out = g(*args)          ← 允许
 ```
 
-变量名叫 `match` 也允许（它是软关键字）：
+`match` 语句**支持**：`case [a, b]`、`case {"k": v}`、`case Point(x=px)`、
+`case [a, *rest]` 里被绑定的名字，作用域查询都能解析（见第七节）。
 
 ```python
-match = re.search(s)    ← 允许
-match value:            ← 拒绝
-    case …
+match = re.search(s)    ← 变量名叫 match 也允许（软关键字）
+match value:            ← 语句本身也允许
+    case [a, b]:
+        out.append(a)
 ```
 
 ## 四、数据流
@@ -216,7 +217,24 @@ def extracted(a):
 (typed_parameter (dictionary_splat_pattern (identifier) @local.definition.parameter))
 ```
 
-**仍未覆盖**、靠第三节的拒绝兜底的：`match`/`case` 的模式绑定，以及星号赋值目标 `*rest = …`。
+`match` / `case` 的模式绑定（实测确认语法树形态后补上）：
+
+```scheme
+; case [a, b] / case {"k": v} / case x —— 绑定都包在 dotted_name 里
+(case_pattern (dotted_name (identifier) @local.definition.var))
+; case Point(x=px) —— 绑定是关键字模式的值，不是它的名字
+(keyword_pattern (dotted_name (identifier) @local.definition.var))
+; case [a, *rest]
+(case_pattern (splat_pattern (identifier) @local.definition.var))
+```
+
+非绑定位置不会被误判：`case Point(...)` 里的类名在 `class_pattern` 下、
+`case Point(x=px)` 里的字段名 `x` 没有 `dotted_name` 包装。
+
+**仍未覆盖**、靠第三节的拒绝兜底的：星号赋值目标 `*rest = …`（语句形式，不是模式）。
+
+`global` / `nonlocal` 也已修正：函数里声明了它们之后，`gv = 1` 不再被当作局部定义
+（`crates/ide-syntax/src/locals.rs` 里的 `rebound_names`）。
 
 ## 八、证据
 

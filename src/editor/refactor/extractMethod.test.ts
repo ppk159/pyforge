@@ -258,7 +258,7 @@ describe("wholeStatements", () => {
     expect(wholeStatements(doc(src), from, to)).toBe("the selection ends with the head of a block");
   });
 
-  it("refuses return, global and match", () => {
+  it("refuses return and global", () => {
     const r = (src: string) => {
       const start = src.indexOf("\n") + 1;
       return wholeStatements(doc(src), start, src.indexOf("\n", start));
@@ -267,12 +267,23 @@ describe("wholeStatements", () => {
       "the selection contains return, yield or await",
     );
     expect(r("def f():\n    a = 1 ; global g\n")).toBe("the selection declares a global or nonlocal name");
-    // A whole `match` statement, not just its head.
-    const m = "def f(v):\n    match v:\n        case 1:\n            pass\n    return None\n";
+  });
+
+  it("accepts a match statement: the scope query resolves its patterns", () => {
+    // `case [a, b]` binds names the query now reports, so a match block is a
+    // normal run of statements.
+    const m = [
+      "def f(v):",
+      "    match v:",
+      "        case [a, b]:",
+      "            out.append(a)",
+      "    return out",
+      "",
+    ].join("\n");
     const from = m.indexOf("    match v:");
-    expect(wholeStatements(doc(m), from, m.indexOf("    return"))).toBe(
-      "the selection contains a match statement, which the syntax service does not resolve",
-    );
+    const to = m.indexOf("    return out");
+    const got = wholeStatements(doc(m), from, to);
+    expect(typeof got).not.toBe("string");
   });
 
   it("refuses a starred assignment target but not a starred call", () => {

@@ -256,6 +256,32 @@ fn collect<'t>(
     Ok(out)
 }
 
+/// Names a function body declares `global` or `nonlocal`.
+///
+/// A nested function's own declarations do not count: each function decides for
+/// itself what it rebinds.
+fn rebound_names(region: Node, text: &str) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let mut stack = vec![region];
+    let mut cursor = region.walk();
+    while let Some(n) = stack.pop() {
+        match n.kind() {
+            "global_statement" | "nonlocal_statement" => {
+                let mut inner = n.walk();
+                for child in n.children(&mut inner) {
+                    if child.is_named() {
+                        out.insert(text[child.byte_range()].to_owned());
+                    }
+                }
+            }
+            // A nested function decides for itself what it rebinds.
+            "function_definition" if n.id() != region.id() => {}
+            _ => stack.extend(n.children(&mut cursor)),
+        }
+    }
+    out
+}
+
 pub(crate) fn locals<'t>(cx: &Ctx<'t>, pos: Pos) -> StructureResult<Locals> {
     let q = LocalsQuery::for_grammar(cx.grammar, cx.language).ok_or(StructureError::Unsupported)?;
     let text = cx.text();
@@ -293,7 +319,22 @@ pub(crate) fn locals<'t>(cx: &Ctx<'t>, pos: Pos) -> StructureResult<Locals> {
         return not_local(reason);
     };
 
-    // 3. Every declaration and reference of the name inside the region.
+    // 3. A `global` / `nonlocal` declaration in an enclosing function means the
+    //    name belongs to an outer scope, so nothing here defines it. Without
+    //    this, `gv = 1` after `global gv` reads as a local definition, and a
+    //    refactoring would treat the module variable as one of the function's own.
+    //
+    //    Every enclosing function is checked: `region` is the outermost scope, but
+    //    a `nonlocal` in a nested function applies from there inwards.
+    let mut enclosing = target.parent();
+    while let Some(n) = enclosing {
+        if cx.kinds.is_function_like(&n) && rebound_names(n, text).contains(&name) {
+            return not_local(NotLocalReason::TopLevel);
+        }
+        enclosing = n.parent();
+    }
+
+    // 4. Every declaration and reference of the name inside the region.
     let caps = collect(cx, q, region.byte_range(), Some(&name))?;
     let scope_of = |node: Node<'t>| -> Option<Node<'t>> {
         let mut cur = node.parent();
