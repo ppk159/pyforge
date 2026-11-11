@@ -35,6 +35,7 @@ import { inlineFallback } from "./inline";
 import { inlineFunctionFallback, isCallUnderCaret } from "./inlineFunction";
 import { appendParameterFallback, renameParameterFallback } from "./changeSignature";
 import { moveFallback, packageOf } from "./move";
+import { comprehensionToLoop, loopToComprehension } from "./loops";
 import { chooseItem, promptInput } from "@/workbench/inputDialogs";
 import { languageName, queryRefactorActions } from "./query";
 import {
@@ -221,6 +222,8 @@ const SYNTAX_FALLBACKS: Partial<Record<RefactoringId, (view: EditorView) => Prom
   extractMethod: extractMethodFallback,
   inline: inlineAnything,
   move: moveHere,
+  comprehensionToLoop,
+  loopToComprehension,
 };
 
 /** First error diagnostic on the selected lines (servers offer nothing over broken code). */

@@ -18,6 +18,7 @@ import { docOf } from "./lsp";
 import { languageSemantics } from "./semantic";
 import { workflowSettings, type ActionsOnSaveValid } from "@/platform/workflowSettings";
 import { startRename } from "./rename";
+import { comprehensionToLoop, loopToComprehension } from "@/editor/refactor/loops";
 import { formatDocument, reformatDialog } from "./format";
 import { showHint } from "./hint";
 import {
@@ -328,6 +329,14 @@ export function registerLspActions(): () => void {
       { keyWhen: GENERATE_KEY_WHEN },
     ),
     editorAction("refactor.inline", "Inline…", "Refactor", (v) => runRefactoring(v, "inline")),
+    // IDEA's Refactor › Convert: one construct rewritten as another. Syntax-only
+    // for Python, where both directions are provable from the tree.
+    editorAction("refactor.comprehensionToLoop", "Convert Comprehension to Loop", "Refactor", (v) =>
+      comprehensionToLoop(v),
+    ),
+    editorAction("refactor.loopToComprehension", "Convert Loop to Comprehension", "Refactor", (v) =>
+      loopToComprehension(v),
+    ),
     editorAction("refactor.pullMembersUp", "Pull Members Up…", "Refactor", (v) =>
       startHierarchyRefactoring(v, "pullUp"),
     ),

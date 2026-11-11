@@ -6972,5 +6972,7 @@
   "Only a move inside one package is supported without the language server: relative imports keep their depth, and `from … import …` is rewritten.": "没有语言服务器时只支持在同一个包内移动：相对导入的层级不变，`from … import …` 会被改写。",
   "Moving into __init__.py is not supported": "不支持移入 __init__.py",
   "Name for the new method": "新方法的名字",
-  "Cannot perform refactoring: the file is read-only": "无法执行重构：文件是只读的"
+  "Cannot perform refactoring: the file is read-only": "无法执行重构：文件是只读的",
+  "Convert Comprehension to Loop": "把推导式转换为循环",
+  "Convert Loop to Comprehension": "把循环转换为推导式"
 }

@@ -647,5 +647,7 @@
   "Only a move inside one package is supported without the language server: relative imports keep their depth, and `from … import …` is rewritten.": "Only a move inside one package is supported without the language server: relative imports keep their depth, and `from … import …` is rewritten.",
   "Moving into __init__.py is not supported": "Moving into __init__.py is not supported",
   "Name for the new method": "Name for the new method",
-  "Cannot perform refactoring: the file is read-only": "Cannot perform refactoring: the file is read-only"
+  "Cannot perform refactoring: the file is read-only": "Cannot perform refactoring: the file is read-only",
+  "Convert Comprehension to Loop": "Convert Comprehension to Loop",
+  "Convert Loop to Comprehension": "Convert Loop to Comprehension"
 }

@@ -19,7 +19,11 @@ export type RefactoringId =
   | "extractParameter"
   | "inline"
   | "pullMembersUp"
-  | "pushMembersDown";
+  | "pushMembersDown"
+  // Conversions that rewrite one construct as another. IDEA puts them under
+  // Refactor › Convert, not under the language server's code actions.
+  | "comprehensionToLoop"
+  | "loopToComprehension";
 
 export interface Refactoring {
   id: RefactoringId;
@@ -103,6 +107,20 @@ export const REFACTORINGS: readonly Refactoring[] = [
     label: "Pull Members Up…",
     kind: null,
     reason: () => "Caret should be inside a class that has members to pull up",
+  },
+  {
+    id: "comprehensionToLoop",
+    action: "refactor.comprehensionToLoop",
+    label: "Convert Comprehension to Loop",
+    kind: null,
+    reason: () => "Caret should be on a list, set or dict comprehension assigned to a name",
+  },
+  {
+    id: "loopToComprehension",
+    action: "refactor.loopToComprehension",
+    label: "Convert Loop to Comprehension",
+    kind: null,
+    reason: () => "Caret should be on a for loop that only appends to an empty collection",
   },
   {
     id: "pushMembersDown",
