@@ -112,58 +112,6 @@ describe("Settings dialog", () => {
     ]);
   });
 
-  it("finds Gradle JVM and applies project Gradle settings", async () => {
-    useProject.setState({ project: { root: "/project" } as never });
-    const dialog = await openDialog("build.gradle");
-    fireEvent.change(within(dialog).getByLabelText("Search settings"), { target: { value: "Gradle JVM" } });
-    expect(within(dialog).getByRole("tree", { name: "Settings pages" }).textContent).toContain("Gradle");
-    expect(within(dialog).getByLabelText("Gradle JVM")).toBeInTheDocument();
-    await act(async () => stage("build.gradle", "project", "languages.java.gradle.jvm", "/jdk21"));
-    await act(async () => stage("build.gradle", "project", "languages.java.gradle.distribution", "local"));
-    expect(within(dialog).getByPlaceholderText("Gradle installation directory")).toBeInTheDocument();
-    await act(async () => stage("build.gradle", "project", "languages.java.gradle.home", "/gradle"));
-    await act(async () => stage("build.gradle", "project", "languages.java.gradle.userHome", "/gradle-cache"));
-    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Apply" })));
-    expect(settingsSet.mock.calls).toEqual(
-      expect.arrayContaining([
-        ["project", "languages.java.gradle.jvm", '"/jdk21"'],
-        ["project", "languages.java.gradle.distribution", '"local"'],
-        ["project", "languages.java.gradle.home", '"/gradle"'],
-        ["project", "languages.java.gradle.userHome", '"/gradle-cache"'],
-      ]),
-    );
-  });
-
-  it("persists Maven toolchains and profiles in project settings", async () => {
-    useProject.setState({ project: { root: "/project" } as never });
-    const dialog = await openDialog("build.maven");
-    fireEvent.change(within(dialog).getByLabelText("Toolchains file"), {
-      target: { value: "config files/toolchains.xml" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Active profiles"), { target: { value: "a, b,!c" } });
-    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Apply" })));
-    expect(settingsSet.mock.calls).toEqual(
-      expect.arrayContaining([
-        ["project", "languages.java.maven.toolchains", '"config files/toolchains.xml"'],
-        ["project", "languages.java.maven.activeProfiles", '"a, b,!c"'],
-      ]),
-    );
-  });
-
-  it("finds the Maven active profiles setting", async () => {
-    useProject.setState({ project: { root: "/project" } as never });
-    const dialog = await openDialog("build.maven");
-    fireEvent.change(within(dialog).getByLabelText("Search settings"), { target: { value: "Active profiles" } });
-    expect(within(dialog).getByLabelText("Active profiles")).toBeInTheDocument();
-  });
-
-  it("finds the Maven toolchains setting", async () => {
-    useProject.setState({ project: { root: "/project" } as never });
-    const dialog = await openDialog("build.maven");
-    fireEvent.change(within(dialog).getByLabelText("Search settings"), { target: { value: "Toolchains" } });
-    expect(within(dialog).getByLabelText("Toolchains file")).toBeInTheDocument();
-  });
-
   it("searches pages and highlights matching option labels", async () => {
     const dialog = await openDialog("appearance");
     fireEvent.change(within(dialog).getByLabelText("Search settings"), { target: { value: "soft wrap" } });
@@ -485,12 +433,12 @@ describe("Settings dialog", () => {
     expect(useKeymap.getState().overrides).toEqual({ "t.dup": ["Ctrl+Alt+Shift+Meta+F9"] });
   });
 
-  describe("toolchain settings with a project open", () => {
+  describe("settings layering with a project open", () => {
     let global: Settings;
     beforeEach(() => {
-      // Global layer: -Xmx1g; the project overrides it with -Xmx4g.
-      global = setAt(structuredClone(DEFAULT_SETTINGS) as Settings, "languages.java.jdtlsVmArgs", "-Xmx1g");
-      current = setAt(global, "languages.java.jdtlsVmArgs", "-Xmx4g");
+      // Global layer: on; the project overrides it to off.
+      global = setAt(structuredClone(DEFAULT_SETTINGS) as Settings, "languages.python.activateVirtualenv", true);
+      current = setAt(global, "languages.python.activateVirtualenv", false);
       settingsGetGlobal.mockImplementation(async () => global);
       useProject.setState({
         settings: current,
@@ -499,31 +447,36 @@ describe("Settings dialog", () => {
     });
 
     it("edit the project first; Global shows and writes the global layer", async () => {
-      const dialog = await openDialog("languages.java");
+      const dialog = await openDialog("python.interpreter");
       expect(within(dialog).getByRole("radio", { name: "This project" })).toHaveAttribute("aria-checked", "true");
-      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx4g");
+      expect(within(dialog).getByRole("checkbox", { name: "Activate virtualenv" })).not.toBeChecked();
 
       fireEvent.click(within(dialog).getByRole("radio", { name: "Global" }));
-      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx1g");
+      expect(within(dialog).getByRole("checkbox", { name: "Activate virtualenv" })).toBeChecked();
       expect(within(dialog).getByText(/used by new projects/)).toBeInTheDocument();
 
-      fireEvent.change(within(dialog).getByLabelText("JVM options"), { target: { value: "-Xmx2g" } });
+      fireEvent.click(within(dialog).getByRole("checkbox", { name: "Activate virtualenv" }));
       await act(async () => {
         fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
       });
-      expect(settingsSet.mock.calls).toEqual([["global", "languages.java.jdtlsVmArgs", '"-Xmx2g"']]);
+      expect(settingsSet.mock.calls).toEqual([["global", "languages.python.activateVirtualenv", "false"]]);
     });
 
     it("Settings for New Projects edits the global layer on every page", async () => {
+      openSettings("python.interpreter");
       render(<SettingsDialog />);
       await act(async () => {
         await executeAction("file.newProjectsSettings");
       });
       const dialog = screen.getByRole("dialog", { name: "Settings for New Projects" });
+      // No scope selector: every page edits the global layer here.
       expect(within(dialog).queryByRole("radiogroup", { name: "Settings scope" })).toBeNull();
-      expect(within(dialog).getByLabelText("JVM options")).toHaveValue("-Xmx1g");
-      expect(within(dialog).getByLabelText("Language server JDK")).toBeInTheDocument();
-      expect(within(dialog).getByText(/used by new projects/)).toBeInTheDocument();
+      expect(within(dialog).getByRole("tree", { name: "Settings pages" })).toBeInTheDocument();
+      await act(async () => stage("python.interpreter", "global", "languages.python.activateVirtualenv", false));
+      await act(async () => {
+        fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+      });
+      expect(settingsSet.mock.calls).toEqual([["global", "languages.python.activateVirtualenv", "false"]]);
     });
   });
 

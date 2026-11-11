@@ -7,7 +7,6 @@ import { CMakeProfiles } from "./cmake";
 import { WORKFLOW_LIMITS } from "@/platform/workflowSettings";
 import type { SelectOption } from "@/ui";
 import { GlobListEditor, NumberInput, Row } from "../components/Form";
-import { GradlePage, MavenPage } from "../languages/LanguagePages";
 import { useSetting } from "../components/context";
 import type { PageSpec } from "./spec";
 import { Indented, ToggleNumber } from "./workflowControls";
@@ -109,60 +108,6 @@ export const EXECUTION_PAGES: PageSpec[] = [
       "Environment variables",
     ],
     component: CMakeProfiles,
-  },
-  {
-    id: "build.gradle",
-    projectScope: true,
-    defaultScope: "project",
-    title: "Gradle",
-    group: BUILD_GROUP,
-    order: 358,
-    keywords: [
-      "Build and run using",
-      "delegate",
-      "JavaExec",
-      "Gradle JVM",
-      "JDK",
-      "JAVA_HOME",
-      "distribution",
-      "wrapper",
-      "gradlew",
-      "local installation",
-      "Gradle home",
-      "Gradle user home",
-      "GRADLE_USER_HOME",
-      "mise",
-      "asdf",
-    ],
-    component: GradlePage,
-  },
-  {
-    id: "build.maven",
-    projectScope: true,
-    defaultScope: "project",
-    title: "Maven",
-    group: BUILD_GROUP,
-    // IntelliJ IDEA: Build Tools › Maven, before Console / Debugger.
-    order: 359,
-    keywords: [
-      "JRE",
-      "runner",
-      "JDK",
-      "JAVA_HOME",
-      "maven home",
-      "mvn",
-      "mvnw",
-      "wrapper",
-      "settings.xml",
-      "user settings",
-      "local repository",
-      "m2",
-      "thread count",
-      "threads",
-      "-T",
-      "parallel",
-    ],
-    component: MavenPage,
   },
   {
     id: "build.console",

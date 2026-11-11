@@ -293,9 +293,10 @@ describe("language pages", () => {
     const tree = buildPageTree(LANGUAGE_PAGES.map((p) => ({ ...p, component: p.component! })));
     expect(tree.map((n) => n.title)).toEqual(["Project Structure", "Languages & Frameworks"]);
     const langs = tree.find((n) => n.title === "Languages & Frameworks")!;
+    // Java is gone: this build is a Python IDE and its page configured nothing a
+    // Python project uses. The remaining languages keep IntelliJ IDEA's grouping.
     expect(langs.children.map((n) => n.title)).toEqual([
       "Go",
-      "Java",
       "Markdown",
       "Node.js",
       "Python Interpreter",
