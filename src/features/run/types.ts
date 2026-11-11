@@ -24,6 +24,7 @@ import { tomcatType } from "./tomcat";
 import { goBuildType, goTestType } from "./goTypes";
 import { pythonType } from "./pythonTypes";
 import { flaskType } from "./flaskTypes";
+import { fastapiType } from "./fastapiTypes";
 
 import { dotnetProjectType, dotnetTestType } from "./dotnetTypes";
 import { rakeType, rspecType, rubyScriptType } from "./rubyTypes";
@@ -440,6 +441,7 @@ export const BUILTIN_TYPES: readonly RunConfigTypeContribution[] = [
   godot,
   pythonType,
   flaskType,
+  fastapiType,
   pytest,
   rubyScriptType,
   rakeType,
