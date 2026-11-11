@@ -569,11 +569,11 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
   // uses, so it is renamed in the moved statements. This is the part that must be
   // right — shadowing the caller's variable silently changes its value.
   const renamed: { from: string; to: string }[] = [];
+  // At module level the caller is the module itself, which is a valid place to put
+  // the declarations: there is no enclosing function then.
+  const callerFn = enclosingFunctionOf(chain);
+  const scope = callerFn ? spanOf(doc, callerFn) : { from: 0, to: doc.length };
   {
-    // At module level the caller is the module itself, which is a valid place to
-    // put the declarations: there is no enclosing function then.
-    const callerFn = enclosingFunctionOf(chain);
-    const scope = callerFn ? spanOf(doc, callerFn) : { from: 0, to: doc.length };
     // The names the body binds, in one request: a local whose definition lies
     // inside the moved text is declared by it.
     const inBody = await structure
@@ -586,33 +586,41 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
       if (def.from >= region.from && def.to <= region.to) declared.push(n.name);
     }
     for (const local of declared) {
-      const found = await structure.identifiers(ctx.doc, local).catch(() => []);
-      const clashes = found.some((occ) => {
-        const span = offsetsOf(doc, occ.range);
-        // Inside the callee is the declaration itself; inside the caller is a clash.
-        if (span.from >= fnSpan.from && span.to <= fnSpan.to) return false;
-        return span.from >= scope.from && span.to <= scope.to;
-      });
-      if (!clashes) continue;
-      // A fresh name that appears nowhere in the caller.
-      let candidate = `${local}_1`;
-      for (let n = 2; n < 100; n++) {
-        const used = await structure.identifiers(ctx.doc, candidate).catch(() => []);
-        const taken = used.some((occ) => {
-          const span = offsetsOf(doc, occ.range);
-          return span.from >= scope.from && span.to <= scope.to;
-        });
-        if (!taken) break;
-        candidate = `${local}_${n}`;
-      }
-      renamed.push({ from: local, to: candidate });
-      substitutions.set(local, candidate);
+      const fresh = await freshName(p, local, scope, fnSpan);
+      if (fresh === local) continue;
+      renamed.push({ from: local, to: fresh });
+      substitutions.set(local, fresh);
     }
   }
 
+  // A parameter written inside the body cannot be substituted: the assignment
+  // would reach through to the caller's variable (or to an expression, which is
+  // not writable at all). It becomes a local of its own that starts as the
+  // argument, which is exactly what the callee's own variable was.
+  const initLines: string[] = [];
+  for (const paramName of [...bound.keys()]) {
+    if (!substitutions.has(paramName)) continue;
+    const found = await structure.identifiers(ctx.doc, paramName).catch(() => []);
+    let written = false;
+    for (const occ of found) {
+      if (occ.qualified) continue;
+      const s = offsetsOf(doc, occ.range);
+      if (s.from < region.from || s.to > region.to) continue;
+      if (await isWriteTarget(ctx, occ.range)) {
+        written = true;
+        break;
+      }
+    }
+    if (!written) continue;
+    const local = await freshName(p, paramName, scope, fnSpan);
+    if (local !== paramName) renamed.push({ from: paramName, to: local });
+    substitutions.set(paramName, local);
+    initLines.push(`${local} = ${bound.get(paramName)!}`);
+  }
+
   // A substitution only holds where the name still means the callee's parameter or
-  // local: never on a write, and not inside a scope of the body's own that rebinds
-  // it, where the same text names something else.
+  // local: never inside a scope of the body's own that rebinds it, where the same
+  // text names something else.
   const movedText = doc.sliceString(region.from, region.to);
   const nests = /\b(def|class|lambda)\b/.test(movedText);
   const subEdits: { from: number; to: number; insert: string }[] = [];
@@ -624,9 +632,6 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
       if (s.from < region.from || s.to > region.to) continue;
       if (nests && (await insideNestedScope(p, occ.range, fn))) {
         return `'${from}' is rebound by a scope of the declaration's own`;
-      }
-      if (bound.has(from) && (await isWriteTarget(ctx, occ.range))) {
-        return `the declaration assigns to its parameter '${from}'`;
       }
       subEdits.push({ from: s.from, to: s.to, insert: to });
     }
@@ -645,37 +650,130 @@ export async function planInlineFunction(view: EditorView): Promise<InlineCallPl
     if (value === null) return "a name occurrence could not be replaced";
     const preamble = body.statements.slice(0, -1);
     let prelude: Prelude | null = null;
-    if (preamble.length) {
-      // A multi-line body cannot go inside an expression: the call must fill the
-      // whole right-hand side or be a statement on its own.
+    let text = value;
+    if (preamble.length || initLines.length) {
+      // The body is more than one line, so it cannot go where the call is. It goes
+      // above the statement — unless the call is only part of that statement, in
+      // which case a temporary holds the value and the call's place keeps the
+      // temporary.
       const parent = chain[callIndex + 1];
       const alone =
         (parent?.kind === "assignment" && chain[callIndex]!.field === "right") ||
         (parent?.kind === "expression_statement" && chain[callIndex]!.field === null) ||
         (parent?.kind === "return_statement" && chain[callIndex]!.field === null);
-      if (!alone) return "the call is part of an expression and its declaration has statements";
-      const stmtSpan = spanOf(doc, parent!);
+      const stmtIndex = chain.findIndex((n, i) => i > callIndex && STATEMENT_KIND.has(n.kind));
+      if (stmtIndex < 0) return "the call is not inside a statement";
+      const stmtSpan = trimSpan(doc, spanOf(doc, chain[stmtIndex]!));
+      const stmtLine = doc.lineAt(stmtSpan.from);
       const indent = indentOf(doc, stmtSpan.from);
-      const carried = applyEdits(
-        doc,
-        { from: doc.lineAt(first.from).from, to: preamble[preamble.length - 1]!.to },
-        subEdits,
-      );
-      if (carried === null) return "a name occurrence could not be replaced";
-      prelude = {
-        at: doc.lineAt(stmtSpan.from).from,
-        text: reindent(carried, body.indent, indent) + "\n",
-      };
+      if (stmtSpan.from !== stmtLine.from + indent.length) {
+        return "the call's statement shares its line with other code";
+      }
+      const lines = initLines.map((l) => indent + l);
+      if (preamble.length) {
+        const carried = applyEdits(
+          doc,
+          { from: doc.lineAt(first.from).from, to: preamble[preamble.length - 1]!.to },
+          subEdits,
+        );
+        if (carried === null) return "a name occurrence could not be replaced";
+        lines.push(reindent(carried, body.indent, indent));
+      }
+      if (!alone) {
+        text = await freshName(p, `${name}_result`, scope, fnSpan);
+        renamed.push({ from: `${name}_result`, to: text });
+        lines.push(`${indent}${text} = ${value}`);
+      }
+      prelude = { at: stmtLine.from, text: lines.join("\n") + "\n" };
     }
     const wrap = needsParens(chain, callIndex);
-    return { from: callSpan.from, to: callSpan.to, text: value, wrap, callee: name, prelude, renamed };
+    return { from: callSpan.from, to: callSpan.to, text, wrap, callee: name, prelude, renamed };
   }
 
-  return planMovesBody({ p, chain, callIndex, callText, name, fn, body, returns, region, subEdits, renamed });
+  return planMovesBody({
+    p,
+    chain,
+    callIndex,
+    callSpan,
+    callText,
+    name,
+    fn,
+    body,
+    returns,
+    region,
+    subEdits,
+    renamed,
+    initLines,
+    scope,
+  });
 }
 
-/** What a body with early returns can be inlined into: the caller's statement. */
-const NOT_A_STATEMENT = "the declaration returns more than once and the call is part of a larger expression";
+/** Node kinds that stand on their own: the call's body goes above one of these. */
+const STATEMENT_KIND = new Set([
+  "expression_statement",
+  "return_statement",
+  "assignment",
+  "augmented_assignment",
+  "if_statement",
+  "for_statement",
+  "while_statement",
+  "with_statement",
+  "try_statement",
+  "raise_statement",
+  "assert_statement",
+  "delete_statement",
+  "import_statement",
+  "import_from_statement",
+  "pass_statement",
+  "break_statement",
+  "continue_statement",
+]);
+
+/** What the call's result has to become once the body is copied out. */
+type Shape =
+  /** `x = f(a)` — the caller's own name takes the value. */
+  | "assign"
+  /** `self.x = f(a)` — a dotted or subscripted target takes it. */
+  | "target"
+  /** `f(a)` alone — the value is thrown away. */
+  | "discard"
+  /** `return f(a)` — the body's returns already return from here. */
+  | "return"
+  /** A temporary takes the value, and the call's place is left holding it. */
+  | "temp";
+
+/** `left` is writable as an assignment target: a name, `a.b` or `a[b]`. */
+function isAssignable(left: string): boolean {
+  const text = left.trim();
+  if (/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(text)) return true;
+  // A subscript, provided it is one expression and not a tuple target.
+  return /^[A-Za-z_][\w.]*\[[\s\S]*\]$/.test(text) && splitTopLevel(text.slice(text.indexOf("["), -1)).length === 1;
+}
+
+/**
+ * A name the caller's scope does not use, based on `wanted`.
+ *
+ * A local the body declares, or a parameter it writes, keeps its own name only
+ * when the caller has no use for it: reusing one would silently change the
+ * caller's variable.
+ */
+async function freshName(p: Prepared, wanted: string, scope: Span, ignore?: Span): Promise<string> {
+  const taken = async (candidate: string): Promise<boolean> => {
+    const found = await structure.identifiers(p.ctx.doc, candidate).catch(() => []);
+    return found.some((occ) => {
+      const span = offsetsOf(p.doc, occ.range);
+      // Inside the callee is the declaration itself, not a use in the caller.
+      if (ignore && span.from >= ignore.from && span.to <= ignore.to) return false;
+      return span.from >= scope.from && span.to <= scope.to;
+    });
+  };
+  if (!(await taken(wanted))) return wanted;
+  for (let n = 1; n < 100; n++) {
+    const candidate = `${wanted}_${n}`;
+    if (!(await taken(candidate))) return candidate;
+  }
+  return `${wanted}_x`;
+}
 
 /**
  * Copy the body into the caller, so that every `return` it has becomes a value
@@ -684,15 +782,19 @@ const NOT_A_STATEMENT = "the declaration returns more than once and the call is 
  * A `while True:` around the copy gives the leaving a target: `return x` becomes
  * `answer = x` and `break`, which runs the caller's remaining statements as
  * skipping them once would not. That rewrite needs the `break` to belong to the
- * wrapper, so a return nested in one of the body's own loops is refused, and it
- * needs a name to assign to, so the call must be the whole right-hand side of
- * `name = call`. A `return call` needs neither: the body's returns already return
- * from the caller's function, so it is copied as it stands.
+ * wrapper, so a return nested in one of the body's own loops is refused.
+ *
+ * Where the answer goes depends on the call's position. `x = f(a)` puts it in the
+ * caller's own name; `self.x = f(a)` assigns to that target; `return f(a)` needs
+ * no rewrite at all, because the body's returns return from the caller's function
+ * already. A call that is only part of the statement (`y = f(a) + 1`) gets a
+ * temporary, and the call's place is left holding that temporary.
  */
 async function planMovesBody(args: {
   p: Prepared;
   chain: SyntaxNode[];
   callIndex: number;
+  callSpan: Span;
   callText: string;
   name: string;
   fn: SyntaxNode;
@@ -701,48 +803,65 @@ async function planMovesBody(args: {
   region: Span;
   subEdits: { from: number; to: number; insert: string }[];
   renamed: { from: string; to: string }[];
+  /** Locals the body's parameters start as, in order, already substituted. */
+  initLines: string[];
+  scope: Span;
 }): Promise<InlineCallPlan | string> {
-  const { p, chain, callIndex, callText, name, fn, body, returns, region, subEdits, renamed } = args;
+  const { p, chain, callIndex, callSpan, callText, name, fn, body, returns, region, subEdits, renamed } = args;
+  const { initLines, scope } = args;
   const doc = p.doc;
-  const parent = chain[callIndex + 1];
-  if (!parent) return NOT_A_STATEMENT;
-  const field = chain[callIndex]!.field;
-  // A statement node starts at its keyword; a hand-built one may carry the indent.
-  const stmtSpan = trimSpan(doc, spanOf(doc, parent));
+
+  // The statement the call belongs to, outermost first: the body goes above it.
+  const stmtIndex = chain.findIndex((n, i) => i > callIndex && STATEMENT_KIND.has(n.kind));
+  if (stmtIndex < 0) return "the call is not inside a statement";
+  const stmtSpan = trimSpan(doc, spanOf(doc, chain[stmtIndex]!));
   const stmtLine = doc.lineAt(stmtSpan.from);
   const indent = indentOf(doc, stmtSpan.from);
-  // The statement must own its lines: a wrapper cannot be spliced into a line
-  // that already holds other code.
-  if (stmtSpan.from !== stmtLine.from + indent.length) return NOT_A_STATEMENT;
+  // The statement must start its line: the body is inserted there, and putting it
+  // above other code on the same line would run it in the wrong order.
+  if (stmtSpan.from !== stmtLine.from + indent.length) {
+    return "the call's statement shares its line with other code";
+  }
   const endLine = doc.lineAt(stmtSpan.to);
   const rest = doc.sliceString(stmtSpan.to, endLine.to).trim();
   const comment = rest.startsWith("#") ? rest : "";
-  if (rest && !comment) return NOT_A_STATEMENT;
   const stmtText = stripTrailingComment(doc.sliceString(stmtSpan.from, stmtSpan.to));
 
-  let shape: "assign" | "discard" | "return";
-  let target = "";
-  if (parent.kind === "assignment" && field === "right") {
-    const eq = topLevelEquals(stmtText);
-    if (eq < 0) return NOT_A_STATEMENT;
-    if (stmtText.slice(eq + 1).trim() !== callText) return NOT_A_STATEMENT;
-    target = stmtText.slice(0, eq).trim();
-    if (!/^[A-Za-z_]\w*$/.test(target)) {
-      return "the declaration returns from more than one place and the call's result is not assigned to a name";
+  // The call's immediate surroundings decide whether the statement can take the
+  // value directly, or needs a temporary to stand in for it.
+  const parent = chain[callIndex + 1];
+  const field = chain[callIndex]!.field;
+  const whole = (text: string, keyword = "") => {
+    let body = text.trim();
+    if (keyword) {
+      if (!body.startsWith(keyword)) return false;
+      body = body.slice(keyword.length).trim();
     }
-    shape = "assign";
-  } else if (parent.kind === "expression_statement" && field === null) {
-    if (stmtText.trim() !== callText) return NOT_A_STATEMENT;
+    return body === callText.trim();
+  };
+
+  let shape: Shape;
+  let target = "";
+  if (parent?.kind === "assignment" && field === "right" && whole(stmtText.slice(topLevelEquals(stmtText) + 1))) {
+    const eq = topLevelEquals(stmtText);
+    const left = stmtText.slice(0, eq).trim();
+    if (!isAssignable(left)) return "the call's result is assigned to a target this scope cannot write";
+    target = left;
+    shape = /^[A-Za-z_]\w*$/.test(left) ? "assign" : "target";
+  } else if (parent?.kind === "expression_statement" && field === null && whole(stmtText)) {
     shape = "discard";
-  } else if (parent.kind === "return_statement" && field === null) {
-    if (stmtText.trim().replace(/^return\s*/, "") !== callText) return NOT_A_STATEMENT;
+  } else if (parent?.kind === "return_statement" && field === null && whole(stmtText, "return")) {
     shape = "return";
   } else {
-    return NOT_A_STATEMENT;
+    // The call is part of a larger expression: a temporary holds its result.
+    target = await freshName(p, `${name}_result`, scope);
+    renamed.push({ from: `${name}_result`, to: target });
+    shape = "temp";
   }
 
+  const writes = shape !== "return" && shape !== "discard";
   const siteEdits: { from: number; to: number; insert: string }[] = [];
-  if (shape !== "return") {
+  if (writes) {
     // `break` leaves the nearest loop, so a return cannot be rewritten where the
     // body keeps one of its own loops between it and the caller.
     if (returns.some((r) => r.inLoop)) return "the declaration returns from inside a loop";
@@ -754,11 +873,11 @@ async function planMovesBody(args: {
       const value = site.value ? applyEdits(doc, site.value, subEdits) : null;
       if (site.value && value === null) return "a name occurrence could not be replaced";
       const siteIndent = indentOf(doc, site.stmt.from);
+      // A bare `return` leaves the value at None.
       siteEdits.push({
         from: site.stmt.from,
         to: site.stmt.to,
-        // A bare `return` leaves the value at None; a discarded result needs no name.
-        insert: shape === "assign" ? `${target} = ${value ?? "None"}\n${siteIndent}break` : "break",
+        insert: `${target} = ${value ?? "None"}\n${siteIndent}break`,
       });
     }
   }
@@ -771,45 +890,85 @@ async function planMovesBody(args: {
   ]);
   if (carried === null) return "a name occurrence could not be replaced";
 
-  const replace: Span = { from: stmtLine.from, to: endLine.to };
-  const callee = name;
+  /** The body's statements at `at`, as the caller indents them. */
+  const copied = (at: string): string[] => [reindent(carried, body.indent, at)];
 
   // A body with no `return` at all needs no control flow: the call ran those
   // statements and answered None, so they are copied and the answer is spelled
   // out where the call used to be.
   if (!returns.length) {
-    const lines = [reindent(carried, body.indent, indent)];
-    if (shape === "assign") lines.push(`${indent}${target} = None`);
+    const lines = [...initLines.map((l) => indent + l), ...copied(indent)];
+    if (shape === "assign" || shape === "target" || shape === "temp") lines.push(`${indent}${target} = None`);
     else if (shape === "return") lines.push(`${indent}return None`);
     if (comment) lines[lines.length - 1] += `  ${comment}`;
     void fn;
-    return { from: replace.from, to: replace.to, text: lines.join("\n"), wrap: false, callee, prelude: null, renamed };
+    return shape === "temp"
+      ? {
+          from: callSpan.from,
+          to: callSpan.to,
+          text: target,
+          wrap: false,
+          callee: name,
+          prelude: { at: stmtLine.from, text: lines.join("\n") + "\n" },
+          renamed,
+        }
+      : {
+          from: stmtLine.from,
+          to: endLine.to,
+          text: lines.join("\n"),
+          wrap: false,
+          callee: name,
+          prelude: null,
+          renamed,
+        };
   }
 
   if (shape === "return") {
-    const text = reindent(carried, body.indent, indent);
+    const text = [...initLines.map((l) => indent + l), ...copied(indent)].join("\n");
     return {
-      from: replace.from,
-      to: replace.to,
+      from: stmtLine.from,
+      to: endLine.to,
       text: comment ? `${text}  ${comment}` : text,
       wrap: false,
-      callee,
+      callee: name,
       prelude: null,
       renamed,
     };
   }
 
   const inner = indent + body.step;
-  const lines = [indent + "while True:" + (comment ? `  ${comment}` : ""), reindent(carried, body.indent, inner)];
-  // A body that can run off its end leaves the caller's variable at None, exactly
-  // as falling off the declaration's end returned None.
+  const lines = [
+    ...initLines.map((l) => indent + l),
+    indent + "while True:" + (comment ? `  ${comment}` : ""),
+    ...copied(inner),
+  ];
+  // A body that can run off its end leaves the target at None, exactly as falling
+  // off the declaration's end returned None.
   const endsInReturn = returns.some((r) => r.stmt.from === body.statements[body.statements.length - 1]!.from);
   if (!endsInReturn) {
-    if (shape === "assign") lines.push(`${inner}${target} = None`);
+    if (shape !== "discard") lines.push(`${inner}${target} = None`);
     lines.push(`${inner}break`);
   }
   void fn;
-  return { from: replace.from, to: replace.to, text: lines.join("\n"), wrap: false, callee, prelude: null, renamed };
+  return shape === "temp"
+    ? {
+        from: callSpan.from,
+        to: callSpan.to,
+        text: target,
+        wrap: false,
+        callee: name,
+        prelude: { at: stmtLine.from, text: lines.join("\n") + "\n" },
+        renamed,
+      }
+    : {
+        from: stmtLine.from,
+        to: endLine.to,
+        text: lines.join("\n"),
+        wrap: false,
+        callee: name,
+        prelude: null,
+        renamed,
+      };
 }
 
 function changesFor(plan: InlineCallPlan, state: EditorState): ChangeSet {

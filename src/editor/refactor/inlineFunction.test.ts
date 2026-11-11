@@ -505,6 +505,121 @@ describe("planInlineFunction", () => {
     expect(plan.prelude!.text).toBe('if a < 0:\n    raise ValueError("neg")\nfor i in b:\n    use(i)\n');
   });
 
+  it("inlines a call that is only part of the statement, through a temporary", async () => {
+    // `y = f(a) + 1`: the body cannot go where the call is, so it goes above and a
+    // temporary stands in the call's place.
+    const src = [
+      "def half(n):",
+      "    if n < 0:",
+      "        return 0",
+      "    return n // 2",
+      "",
+      "y = half(a) + 1",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("half");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def half(n):\n    if n < 0:\n        return 0\n    return n // 2"],
+      ["block", "    if n < 0:\n        return 0\n    return n // 2", 0, "body"],
+      ["if_statement", "    if n < 0:\n        return 0"],
+      ["block", "        return 0"],
+      ["return_statement", "        return 0"],
+      ["return_statement", "    return n // 2"],
+      ["expression_statement", "y = half(a) + 1"],
+      ["assignment", "y = half(a) + 1"],
+      ["binary_operator", "half(a) + 1", 0, "right"],
+      ["call", "half(a)"],
+      ["identifier", "half", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("half(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    // The call alone is replaced; the rest of the statement keeps working on the
+    // temporary.
+    expect(plan.text).toBe("half_result");
+    expect(plan.prelude).not.toBeNull();
+    expect(plan.prelude!.text).toBe(
+      [
+        "while True:",
+        "    if a < 0:",
+        "        half_result = 0",
+        "        break",
+        "    half_result = a // 2",
+        "    break",
+      ].join("\n") + "\n",
+    );
+  });
+
+  it("gives a written parameter a local of its own", async () => {
+    // Substituting the argument would write through to the caller's `a`, and an
+    // expression is not writable at all.
+    const src = ["def bump(x):", "    x = x + 1", "    return x", "", "y = bump(a)", ""].join("\n");
+    H.text = src;
+    outlineOf("bump");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def bump(x):\n    x = x + 1\n    return x"],
+      ["block", "    x = x + 1\n    return x", 0, "body"],
+      ["expression_statement", "    x = x + 1"],
+      ["assignment", "    x = x + 1"],
+      // The target's own node, which is how a write is told from a read.
+      ["identifier", "x", 1, "left"],
+      ["return_statement", "    return x"],
+      ["expression_statement", "y = bump(a)"],
+      ["assignment", "y = bump(a)"],
+      ["call", "bump(a)", 0, "right"],
+      ["identifier", "bump", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("bump(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.text).toBe("x");
+    expect(plan.prelude).not.toBeNull();
+    // The parameter starts as a copy of the argument, then is written freely.
+    expect(plan.prelude!.text).toBe(["x = a", "x = x + 1", ""].join(String.fromCharCode(10)));
+  });
+
+  it("assigns to a dotted target without a temporary", async () => {
+    const src = [
+      "def half(n):",
+      "    if n < 0:",
+      "        return 0",
+      "    return n // 2",
+      "",
+      "self.y = half(a)",
+      "",
+    ].join("\n");
+    H.text = src;
+    outlineOf("half");
+    tree([
+      ["module", src.trimEnd()],
+      ["function_definition", "def half(n):\n    if n < 0:\n        return 0\n    return n // 2"],
+      ["block", "    if n < 0:\n        return 0\n    return n // 2", 0, "body"],
+      ["if_statement", "    if n < 0:\n        return 0"],
+      ["block", "        return 0"],
+      ["return_statement", "        return 0"],
+      ["return_statement", "    return n // 2"],
+      ["expression_statement", "self.y = half(a)"],
+      ["assignment", "self.y = half(a)"],
+      ["call", "half(a)", 0, "right"],
+      ["identifier", "half", 0, "function"],
+      ["argument_list", "(a)", 0, "arguments"],
+    ]);
+    const v = editor(src, src.indexOf("half(a)") + 1);
+    const plan = await planInlineFunction(v);
+    if (typeof plan === "string") throw new Error(plan);
+    expect(plan.prelude).toBeNull();
+    expect(plan.text).toBe(
+      ["while True:", "    if a < 0:", "        self.y = 0", "        break", "    self.y = a // 2", "    break"].join(
+        "\n",
+      ),
+    );
+  });
+
   it("inlines a body with no return, spelling out the None", async () => {
     // The call ran those statements and answered None; both halves have to appear
     // where the call was.
