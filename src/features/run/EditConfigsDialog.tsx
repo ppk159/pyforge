@@ -375,7 +375,7 @@ function EditConfigsDialog() {
     }
   };
 
-  const templateTypes = runConfigTypes(types).filter((t) => t.id !== COMPOUND);
+  const templateTypes = runConfigTypes(types).filter((t) => t.id !== COMPOUND && !t.hidden);
   const canRemove = selection?.type === "folder" || !!current;
 
   return (

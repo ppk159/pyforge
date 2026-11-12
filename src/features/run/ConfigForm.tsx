@@ -210,10 +210,17 @@ async function choosePaths(opts: { directory?: boolean; multiple?: boolean; from
   return picked === null ? [] : Array.isArray(picked) ? picked : [picked];
 }
 
-/** `path` relative to the project root when inside it; the root itself is "". */
+/**
+ * `path` relative to the project root when inside it; the root itself is "".
+ *
+ * The file dialog answers with `\` on Windows while a stored path uses `/`, so both
+ * sides are brought to `/` first: without that a picked `.env` stayed absolute and was
+ * stored as `C:\…\.env` beside the relative entry it duplicated.
+ */
 function projectRelative(root: string | null, path: string): string {
+  const slash = (p: string) => p.replace(/\\/g, "/");
   if (!root) return path;
-  return path === root ? "" : relativePath(root, path);
+  return relativePath(slash(root), slash(path));
 }
 
 /** Browse button next to a path field; local windows only (the dialog shows this machine's files). */
@@ -503,7 +510,10 @@ export function ConfigForm({ config, all, type, errors, template, onChange, modi
                 >
                   <TypeField
                     field={f}
-                    value={params[f.key] ?? ""}
+                    // A checkbox that the form never wrote (an older configuration, a field
+                    // added since) shows the default its type declares: the extras and the
+                    // backend both apply that default, so an empty box would be a lie.
+                    value={params[f.key] ?? (f.control === "checkbox" ? (type.defaults?.[f.key] ?? "") : "")}
                     params={params}
                     all={all}
                     invalid={!!errors[f.key]}
@@ -593,21 +603,6 @@ export function ConfigForm({ config, all, type, errors, template, onChange, modi
                     title="Edit Environment Variables"
                     onClick={() => setEnvOpen(true)}
                   />
-                  {isTauri() && !isRemoteWindow() && (
-                    <IconButton
-                      icon="folder-open"
-                      size="small"
-                      iconSize={14}
-                      title="Browse for .env Files"
-                      onClick={() =>
-                        void choosePaths({ multiple: true, from: root }).then((picked) => {
-                          const current = config.envFiles ?? [];
-                          const added = picked.map((p) => projectRelative(root, p)).filter((f) => !current.includes(f));
-                          if (added.length) update({ envFiles: [...current, ...added] });
-                        })
-                      }
-                    />
-                  )}
                 </div>
                 {config.includeSystemEnv === false && (
                   <span className={styles.chooserMuted}>
@@ -617,22 +612,41 @@ export function ConfigForm({ config, all, type, errors, template, onChange, modi
               </Field>
               {isShown("envFiles") && (
                 <Field label='Paths to ".env" files' hint="Relative to the project root; separate with semicolon">
-                  <Input
-                    mono
-                    aria-label='Paths to ".env" files'
-                    value={envFilesText ?? (config.envFiles ?? []).join(";")}
-                    placeholder=".env"
-                    onChange={(e) => {
-                      setEnvFilesText(e.target.value);
-                      update({
-                        envFiles: e.target.value
-                          .split(";")
-                          .map((p) => p.trim())
-                          .filter(Boolean),
-                      });
-                    }}
-                    onBlur={() => setEnvFilesText(null)}
-                  />
+                  <div className={styles.inputWithButton}>
+                    <Input
+                      mono
+                      aria-label='Paths to ".env" files'
+                      value={envFilesText ?? (config.envFiles ?? []).join(";")}
+                      placeholder=".env"
+                      onChange={(e) => {
+                        setEnvFilesText(e.target.value);
+                        update({
+                          envFiles: e.target.value
+                            .split(";")
+                            .map((p) => p.trim())
+                            .filter(Boolean),
+                        });
+                      }}
+                      onBlur={() => setEnvFilesText(null)}
+                    />
+                    {isTauri() && !isRemoteWindow() && (
+                      <IconButton
+                        icon="folder-open"
+                        size="small"
+                        iconSize={14}
+                        title="Browse for .env files"
+                        onClick={() =>
+                          void choosePaths({ multiple: true, from: root }).then((picked) => {
+                            const current = config.envFiles ?? [];
+                            const added = picked
+                              .map((p) => projectRelative(root, p))
+                              .filter((f) => !current.includes(f));
+                            if (added.length) update({ envFiles: [...current, ...added] });
+                          })
+                        }
+                      />
+                    )}
+                  </div>
                 </Field>
               )}
               {isShown("stdinFile") && (
@@ -830,7 +844,17 @@ function TypeField({
     );
   }
   if (field.control === "checkbox")
-    return <Checkbox checked={value === "true"} onChange={(on) => onChange(on ? "true" : "")} label={field.label} />;
+    // The row's label is this control's text; repeating it beside the box read as a
+    // second, identical setting. An unchecked box writes "false" rather than dropping
+    // the key, so the default its type declares cannot bring the tick back.
+    return (
+      <Checkbox
+        checked={value === "true"}
+        onChange={(on) => onChange(on ? "true" : "false")}
+        aria-label={field.label}
+        {...(field.checkboxLabel ? { label: field.checkboxLabel } : {})}
+      />
+    );
   if (field.control === "textarea")
     return (
       <textarea

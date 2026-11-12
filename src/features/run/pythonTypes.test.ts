@@ -16,6 +16,7 @@ vi.mock("@/features/settings/languages/api", () => ({
 }));
 
 const { pythonType, pythonCommandLine, pythonParamsFrom, pythonExtras } = await import("./pythonTypes");
+const { newConfigOfType, withParams } = await import("./types");
 
 afterEach(() => {
   effective.mockReset();
@@ -178,10 +179,19 @@ describe("the PYTHONPATH switches", () => {
       pythonContentRoots: false,
       pythonSourceRoots: true,
     });
-    expect(pythonExtras({})).toEqual({});
+    // Nothing said means the defaults, which is what the backend applies anyway.
+    expect(pythonExtras({})).toEqual({ pythonContentRoots: true, pythonSourceRoots: true });
   });
 
-  it("carries .env files", () => {
-    expect(pythonExtras({}, [".env", "local.env"])).toEqual({ envFiles: [".env", "local.env"] });
+  it("start out on, as the backend's defaults do", () => {
+    expect(pythonType.defaults).toMatchObject({ addContentRoots: "true", addSourceRoots: "true" });
+  });
+
+  it("reach the configuration when a field changes, not just the params", () => {
+    // Both boxes off: the process must not get the project's roots on PYTHONPATH.
+    // What the form passes once the second box is cleared: the key is gone from params.
+    const config = withParams(newConfigOfType(pythonType, []), { addSourceRoots: "false" }, pythonType);
+    expect(config.pythonContentRoots).toBe(true);
+    expect(config.pythonSourceRoots).toBe(false);
   });
 });

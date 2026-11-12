@@ -33,19 +33,6 @@ pub(crate) fn detect_with_profiles(
     detect_gradle(root, &mut out);
     detect_maven(root, excluded_poms, &mut out);
     detect_go(root, &mut out);
-    detect_projects_matching(
-        root,
-        |dir| {
-            ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pytest.ini", "tox.ini", "manage.py"]
-                .iter()
-                .any(|name| dir.join(name).is_file())
-                || [".venv", "venv"]
-                    .iter()
-                    .any(|name| dir.join(name).join(PyEnv::bin_dir()).join(PyEnv::python_exe()).is_file())
-        },
-        detect_python,
-        &mut out,
-    );
     detect_projects(
         root,
         &["composer.json", "phpunit.xml", "phpunit.xml.dist", "phpunit.dist.xml"],
@@ -829,43 +816,6 @@ impl PyEnv {
         if cfg!(windows) { "python.exe" } else { "python" }
     }
 
-    /// `(command, leading args)` to run `tool`, e.g. `("uv", ["run", "pytest"])`.
-    fn tool(&self, root: &Path, tool: &str) -> (String, Vec<String>) {
-        match self {
-            Self::Runner(r) => ((*r).to_owned(), vec!["run".into(), tool.into()]),
-            Self::Venv(v) => {
-                let exe = if cfg!(windows) { format!("{tool}.exe") } else { tool.to_owned() };
-                let rel = format!("{v}/{}/{exe}", Self::bin_dir());
-                if root.join(&rel).is_file() {
-                    (rel, Vec::new())
-                } else {
-                    let py = format!("{v}/{}/{}", Self::bin_dir(), Self::python_exe());
-                    (py, vec!["-m".into(), tool.into()])
-                }
-            }
-            Self::System => (tool.to_owned(), Vec::new()),
-            // A pixi env's executables sit in `bin` (Unix) or `Scripts` (Windows)
-            // like a venv's; else `pixi run` finds the tool.
-            Self::Pixi(v) => {
-                let exe = if cfg!(windows) { format!("{tool}.exe") } else { tool.to_owned() };
-                for bin in ["Scripts", "bin"] {
-                    let rel = format!("{v}/{bin}/{exe}");
-                    if root.join(&rel).is_file() {
-                        return (rel, Vec::new());
-                    }
-                }
-                ("pixi".to_owned(), vec!["run".into(), tool.into()])
-            }
-        }
-    }
-
-    /// Whether a project virtualenv has `tool` installed.
-    fn has_tool(&self, root: &Path, tool: &str) -> bool {
-        let Self::Venv(v) = self else { return false };
-        let exe = if cfg!(windows) { format!("{tool}.exe") } else { tool.to_owned() };
-        root.join(v).join(Self::bin_dir()).join(exe).is_file()
-    }
-
     fn python(&self) -> (String, Vec<String>) {
         match self {
             Self::Runner(r) => ((*r).to_owned(), vec!["run".into(), "python".into()]),
@@ -899,91 +849,6 @@ pub(crate) fn project_python(root: &Path) -> (String, Vec<String>) {
         return (PyEnv::pixi_python(&env), Vec::new());
     }
     PyEnv::detect(root).python()
-}
-
-fn py_config(
-    id: String,
-    name: String,
-    kind: &str,
-    (command, mut args): (String, Vec<String>),
-    extra: &[&str],
-) -> RunConfig {
-    args.extend(extra.iter().map(|a| (*a).to_owned()));
-    let mut c = config(id, name, kind, &command, &[]);
-    c.args = args;
-    c.debug("debugpy")
-}
-
-fn uses_pytest(root: &Path) -> bool {
-    if ["pytest.ini", "tox.ini", "conftest.py"].iter().any(|f| root.join(f).is_file()) {
-        return true;
-    }
-    if read(&root.join("setup.cfg")).is_some_and(|s| s.contains("[tool:pytest]")) {
-        return true;
-    }
-    if read(&root.join("pyproject.toml")).is_some_and(|py| py.contains("pytest") || root.join("tests").is_dir()) {
-        return true;
-    }
-    ["requirements.txt", "requirements-dev.txt", "requirements_dev.txt", "dev-requirements.txt"]
-        .iter()
-        .any(|f| read(&root.join(f)).is_some_and(|s| s.contains("pytest")))
-}
-
-fn detect_python(root: &Path, out: &mut Vec<RunConfig>) {
-    let markers = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pytest.ini", "tox.ini", "manage.py"];
-    let env = PyEnv::detect(root);
-    // A project virtualenv or pixi environment marks a Python project too
-    // (scripts + tests without packaging files).
-    let venv = matches!(env, PyEnv::Venv(_) | PyEnv::Pixi(_));
-    if !venv && !markers.iter().any(|m| root.join(m).is_file()) {
-        return;
-    }
-    if root.join("manage.py").is_file() {
-        out.push(py_config(
-            "django:runserver".into(),
-            "manage.py runserver".into(),
-            "python",
-            env.python(),
-            &["manage.py", "runserver"],
-        ));
-    }
-    let mut modules = Vec::new();
-    for base in [root.to_path_buf(), root.join("src")] {
-        for dir in subdirs(&base) {
-            let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let ident = !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_');
-            if ident && !matches!(name.as_str(), "venv" | "tests" | "test") && dir.join("__main__.py").is_file() {
-                modules.push(name);
-            }
-        }
-    }
-    modules.sort();
-    modules.dedup();
-    for m in modules {
-        out.push(py_config(
-            format!("python:module:{m}"),
-            format!("python -m {m}"),
-            "python",
-            env.python(),
-            &["-m", &m],
-        ));
-    }
-    if uses_pytest(root) || env.has_tool(root, "pytest") {
-        out.push(py_config("pytest".into(), "pytest".into(), "pytest", env.tool(root, "pytest"), &[]).test());
-    }
-    // After pytest: a project set up for pytest (pytest-django) keeps it as the default test runner.
-    if root.join("manage.py").is_file() {
-        out.push(
-            py_config(
-                "django:test".into(),
-                "manage.py test".into(),
-                "django-test",
-                env.python(),
-                &["manage.py", "test"],
-            )
-            .test(),
-        );
-    }
 }
 
 // ---------------------------------------------------------------- php

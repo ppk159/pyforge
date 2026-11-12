@@ -36,13 +36,26 @@ describe("Environment variables", () => {
     open.mockResolvedValue(["/work/app/.env", "/work/app/config/dev.env", "/elsewhere/shared.env"]);
     const onChange = vi.fn();
     render(<ConfigForm config={config} all={[]} type={undefined} errors={{}} onChange={onChange} modifyRequest={0} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse for .env Files" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse for .env files" }));
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         expect.objectContaining({ envFiles: [".env", "config/dev.env", "/elsewhere/shared.env"] }),
       ),
     );
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ multiple: true, defaultPath: "/work/app" }));
+  });
+
+  it("stores a picked .env relative to the root even when Windows answers with backslashes", async () => {
+    // The dialog answers with `\` on Windows; a stored path uses `/`. Without bringing both
+    // to one form the pick stayed absolute and sat beside the relative entry as `C:\…\.env`.
+    useProject.setState({ project: { root: "C:/work/app" } as never });
+    open.mockResolvedValue([String.raw`C:\work\app\local.env`]);
+    const onChange = vi.fn();
+    render(<ConfigForm config={config} all={[]} type={undefined} errors={{}} onChange={onChange} modifyRequest={0} />);
+    fireEvent.click(screen.getByRole("button", { name: "Browse for .env files" }));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ envFiles: [".env", "local.env"] })),
+    );
   });
 });
 

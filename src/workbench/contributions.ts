@@ -1239,6 +1239,11 @@ export interface RunConfigTypeField {
   validate?(value: string, params: Readonly<Record<string, string>>): string | null;
   /** Shown under the control. */
   hint?: string;
+  /**
+   * Text beside a checkbox. Unset means the row's own label is the control's text, which
+   * is the usual case — a second copy of it read as a separate setting.
+   */
+  checkboxLabel?: string;
   /** A text field holding a path: a button next to it picks a file or a directory (absolute path). */
   browse?: "file" | "directory" | ((params: Readonly<Record<string, string>>) => "file" | "directory");
 }
@@ -1251,6 +1256,12 @@ export interface RunConfigTypeContribution {
   description?: string;
   /** Parent node in "Add New Configuration" (e.g. `Docker`). */
   group?: string;
+  /**
+   * Kept out of "Add New Configuration", which a build narrows to the types it is
+   * for. The type still resolves, so a configuration imported from another IDE
+   * opens in its form and runs.
+   */
+  hidden?: boolean;
   /** Params of a new configuration (before templates apply). */
   defaults?: Readonly<Record<string, string>>;
   fields: readonly RunConfigTypeField[];
@@ -1263,6 +1274,12 @@ export interface RunConfigTypeContribution {
   ): { command: string; args: string[]; cwd?: string | null; stop?: string | null } | null;
   /** Params that reproduce a configuration made elsewhere (detection, older files); null when it doesn't fit. */
   paramsFrom?(config: RunConfig): Record<string, string> | null;
+  /**
+   * What the fields imply beyond the command line: PYTHONPATH switches, `.env` files,
+   * `FLASK_ENV`. Merged into the configuration whenever a field changes, so a field that
+   * shows no command-line part is still not a dead control.
+   */
+  extras?(params: Readonly<Record<string, string>>, config: RunConfig): Partial<RunConfig>;
   /** The type's fields set the working directory (no separate field). */
   ownsWorkingDirectory?: boolean;
   /** "Emulate terminal in output console" applies (default true). */

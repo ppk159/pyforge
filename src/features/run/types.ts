@@ -285,6 +285,9 @@ function buildToolType(
     label,
     icon,
     description: tasks.description,
+    // Gradle and Maven are the JVM build tools; hidden, not removed, so an imported
+    // configuration still reads.
+    hidden: true,
     defaults: wrapper.byDefault ? { wrapper: "true" } : {},
     ownsWorkingDirectory: true,
     fields: [
@@ -497,9 +500,12 @@ export function formParams(config: RunConfig, type = typeFor(config.kind)): Reco
 export function withParams(config: RunConfig, params: Record<string, string>, type = typeFor(config.kind)): RunConfig {
   const line = type?.commandLine(params);
   const { stopCommand: _previous, ...rest } = config;
-  if (!line) return { ...rest, params, command: "", args: [] };
+  // The fields an environment reads but no command line shows (PYTHONPATH, `FLASK_ENV`, `.env`).
+  const extras = type?.extras?.(params, rest) ?? {};
+  if (!line) return { ...rest, ...extras, params, command: "", args: [] };
   return {
     ...rest,
+    ...extras,
     ...(config.kind === "dotnet" && config.beforeLaunch === undefined
       ? { beforeLaunch: [{ kind: "dotnetBuild", target: "" }] }
       : {}),

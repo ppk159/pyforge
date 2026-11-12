@@ -164,20 +164,6 @@ export function pythonParamsFrom(c: RunConfig): Record<string, string> | null {
   return null;
 }
 
-export const pythonType: RunConfigTypeContribution = {
-  id: "python",
-  label: "Python",
-  icon: "file-python",
-  description: "Run a Python script or module",
-  defaults: { mode: "script" },
-  debugAdapter: "debugpy",
-  fields: [modeField, interpreterField, scriptField, moduleField, parametersField],
-  // The interpreter is resolved by the backend, so building the line is async.
-  commandLine: (p) => pythonCommandLine(p),
-  paramsFrom: pythonParamsFrom,
-  prepareLaunch: resolveInterpreter,
-};
-
 /**
  * The two PYTHONPATH switches, shared with the framework types.
  *
@@ -198,14 +184,38 @@ export const pythonPathFields: readonly RunConfigTypeField[] = [
   },
 ];
 
-/** The extras the PYTHONPATH switches and the `.env` files become. */
-export function pythonExtras(
-  params: Readonly<Record<string, string>>,
-  envFiles: readonly string[] = [],
-): Partial<RunConfig> {
-  const out: Partial<RunConfig> = {};
-  if (params.addContentRoots !== undefined) out.pythonContentRoots = params.addContentRoots === "true";
-  if (params.addSourceRoots !== undefined) out.pythonSourceRoots = params.addSourceRoots === "true";
-  if (envFiles.length) out.envFiles = [...envFiles];
-  return out;
+/**
+ * Both switches start out on, which is what PyCharm does and what the backend already
+ * assumed (`python_content_roots` defaults to true): an unchecked box and a true default
+ * would disagree about what the process gets.
+ */
+export const pythonPathDefaults = { addContentRoots: "true", addSourceRoots: "true" } as const;
+
+/**
+ * The extras the PYTHONPATH switches become.
+ *
+ * A cleared checkbox deletes its param, so a missing key means "on" — the default the
+ * backend already applies. Reading only a present key left the previous `true` behind
+ * and made the box impossible to turn off.
+ */
+export function pythonExtras(params: Readonly<Record<string, string>>): Partial<RunConfig> {
+  return {
+    pythonContentRoots: (params.addContentRoots ?? pythonPathDefaults.addContentRoots) === "true",
+    pythonSourceRoots: (params.addSourceRoots ?? pythonPathDefaults.addSourceRoots) === "true",
+  };
 }
+
+export const pythonType: RunConfigTypeContribution = {
+  id: "python",
+  label: "Python",
+  icon: "file-python",
+  description: "Run a Python script or module",
+  defaults: { mode: "script", ...pythonPathDefaults },
+  debugAdapter: "debugpy",
+  fields: [modeField, interpreterField, scriptField, moduleField, parametersField, ...pythonPathFields],
+  // The interpreter is resolved by the backend, so building the line is async.
+  commandLine: (p) => pythonCommandLine(p),
+  paramsFrom: pythonParamsFrom,
+  extras: pythonExtras,
+  prepareLaunch: resolveInterpreter,
+};

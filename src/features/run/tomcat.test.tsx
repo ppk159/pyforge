@@ -51,7 +51,7 @@ vi.mock("@/platform/ipc", async (importOriginal) => ({
 afterEach(cleanup);
 
 describe("Tomcat Local", () => {
-  it("offers a Tomcat Server configuration grouped under Servers with build and browser defaults", () => {
+  it("creates a Tomcat Server configuration that the picker keeps out and the form still reads", () => {
     const config = newConfigOfType(tomcatType, []);
     expect(config.params).toMatchObject({
       httpPort: "8080",
@@ -60,7 +60,8 @@ describe("Tomcat Local", () => {
       openBrowser: "true",
     });
     expect(config.debugAdapter).toBe("java-debug");
-    expect(typeRows([tomcatType], "")).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Servers" })]));
+    // A JVM type: hidden from "Add New Configuration", still resolvable for an imported one.
+    expect(typeRows([tomcatType], "")).toEqual([]);
     expect(missingParams(config, tomcatType)).toHaveProperty("tomcatHome");
   });
   it("validates ports and context paths and supports manually chosen web roots", () => {

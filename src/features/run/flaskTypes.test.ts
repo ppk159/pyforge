@@ -62,7 +62,6 @@ describe("the Flask Server configuration", () => {
       app: "app.py",
       parameters: "--port 8866",
       flaskEnv: "production",
-      envFiles: "",
     });
   });
 
@@ -84,19 +83,27 @@ describe("the Flask Server configuration", () => {
   });
 
   it("exports the Flask environment and enables the reloader in development", () => {
-    expect(flaskExtras({ flaskEnv: "development" })).toEqual({
+    expect(flaskExtras({ flaskEnv: "development" })).toMatchObject({
       env: { FLASK_ENV: "development", FLASK_DEBUG: "1" },
     });
     // Production must not turn on the debugger.
-    expect(flaskExtras({ flaskEnv: "production" })).toEqual({ env: { FLASK_ENV: "production" } });
-    expect(flaskExtras({})).toEqual({ env: { FLASK_ENV: "development", FLASK_DEBUG: "1" } });
+    expect(flaskExtras({ flaskEnv: "production" })).toMatchObject({ env: { FLASK_ENV: "production" } });
+    expect(flaskExtras({})).toMatchObject({ env: { FLASK_ENV: "development", FLASK_DEBUG: "1" } });
   });
 
-  it("passes .env files and the PYTHONPATH switches on", () => {
-    expect(flaskExtras({ envFiles: ".env, local.env", addSourceRoots: "false" })).toMatchObject({
-      envFiles: [".env", "local.env"],
-      pythonSourceRoots: false,
-    });
+  it("passes the PYTHONPATH switches on", () => {
+    expect(flaskExtras({ addSourceRoots: "false" })).toMatchObject({ pythonSourceRoots: false });
+  });
+
+  it("drops the reloader when the environment leaves development", () => {
+    // Switching development → production in the form kept FLASK_DEBUG=1, so the server
+    // reloaded and showed the debugger in production.
+    const from = flaskExtras({ flaskEnv: "development" }, { FLASK_ENV: "development", FLASK_DEBUG: "1" });
+    expect(from.env).toMatchObject({ FLASK_DEBUG: "1" });
+    const to = flaskExtras({ flaskEnv: "production" }, from.env);
+    expect(to.env).toEqual({ FLASK_ENV: "production" });
+    // A variable the user set themselves is theirs to keep.
+    expect(flaskExtras({ flaskEnv: "production" }, { SECRET_KEY: "s" }).env).toMatchObject({ SECRET_KEY: "s" });
   });
 
   it("keeps environment variables the configuration already has", () => {

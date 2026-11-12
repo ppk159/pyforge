@@ -70,7 +70,6 @@ describe("the FastAPI Server configuration", () => {
       appVar: "app",
       appDir: "src",
       parameters: "--port 8000",
-      envFiles: "",
     });
   });
 
@@ -137,11 +136,8 @@ describe("the FastAPI Server configuration", () => {
     expect(field.validate!("webapp.fastapi_app", {})).toBeNull();
   });
 
-  it("passes .env files and the PYTHONPATH switches on", () => {
-    expect(fastapiExtras({ envFiles: ".env", addSourceRoots: "false" })).toMatchObject({
-      envFiles: [".env"],
-      pythonSourceRoots: false,
-    });
+  it("passes the PYTHONPATH switches on", () => {
+    expect(fastapiExtras({ addSourceRoots: "false" })).toMatchObject({ pythonSourceRoots: false });
     // uvicorn needs no environment variables of its own.
     expect(fastapiExtras({}).env).toEqual({});
   });

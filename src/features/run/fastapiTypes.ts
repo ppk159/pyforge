@@ -14,7 +14,7 @@ import type { RunConfig } from "@/platform/ipc";
 import type { RunConfigTypeContribution, RunConfigTypeField } from "@/workbench/contributions";
 import { formatArgs, parseArgs } from "./configs";
 import { commandName } from "./commandName";
-import { pythonExtras, pythonPathFields, resolveInterpreter } from "./pythonTypes";
+import { pythonExtras, pythonPathDefaults, pythonPathFields, resolveInterpreter } from "./pythonTypes";
 
 /**
  * A uvicorn target: `<module>:<variable>` or a bare `<module>`.
@@ -81,14 +81,6 @@ const optionsField: RunConfigTypeField = {
   placeholder: "e.g. --host 0.0.0.0 --port 8000 --reload",
 };
 
-const envFilesField: RunConfigTypeField = {
-  key: "envFiles",
-  label: ".env files",
-  mono: true,
-  placeholder: "e.g. .env, local.env",
-  hint: "Loaded into the server's environment before the variables below",
-};
-
 /** uvicorn's target: `<module>:<variable>`. */
 export function uvicornTarget(params: Readonly<Record<string, string>>): string {
   const module = params.module?.trim() ?? "";
@@ -102,8 +94,9 @@ export const fastapiType: RunConfigTypeContribution = {
   icon: "file-python",
   group: "Servers",
   description: "Run an ASGI application with uvicorn",
+  defaults: { ...pythonPathDefaults },
   debugAdapter: "debugpy",
-  fields: [interpreterField, moduleField, appField, appDirField, optionsField, envFilesField, ...pythonPathFields],
+  fields: [interpreterField, moduleField, appField, appDirField, optionsField, ...pythonPathFields],
   commandLine: (p) => {
     const interpreter = p.interpreter?.trim() || "python3";
     const appDir = p.appDir?.trim();
@@ -115,6 +108,7 @@ export const fastapiType: RunConfigTypeContribution = {
     };
   },
   paramsFrom: fastapiParams,
+  extras: (params) => fastapiExtras(params),
   prepareLaunch: resolveInterpreter,
 };
 
@@ -166,17 +160,12 @@ function fastapiParams(c: RunConfig): Record<string, string> | null {
     appDir,
     // The flags before the target apply to this configuration, so keep them too.
     parameters: formatArgs([...rest.slice(0, at), ...rest.slice(at + 1)]),
-    envFiles: (c.envFiles ?? []).join(", "),
   };
 }
 
-/** The extras an ASGI run needs: `.env` files and the PYTHONPATH switches. */
+/** The extras an ASGI run needs: the PYTHONPATH switches. */
 export function fastapiExtras(
   params: Readonly<Record<string, string>>,
 ): Partial<RunConfig> & { env: Record<string, string> } {
-  const files = (params.envFiles ?? "")
-    .split(/[,;]/)
-    .map((f) => f.trim())
-    .filter(Boolean);
-  return { ...pythonExtras(params, files), env: {} };
+  return { ...pythonExtras(params), env: {} };
 }

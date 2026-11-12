@@ -66,6 +66,7 @@ const JVM_KINDS = new Set(["application", "spring-boot", "maven", "gradle", "jav
 export const remoteJvmType: RunConfigTypeContribution = {
   id: REMOTE_JVM,
   label: "Remote JVM Debug",
+  hidden: true,
   icon: "attach-to-process",
   description: "Attach the debugger to a JVM started with a JDWP agent, here or on another machine",
   defaults: { mode: "attach", host: "localhost", port: "5005", jdk: "9" },

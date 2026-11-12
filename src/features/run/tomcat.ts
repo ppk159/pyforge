@@ -13,6 +13,7 @@ export const tomcatType: RunConfigTypeContribution = {
   id: "tomcat",
   group: "Servers",
   label: "Tomcat Server",
+  hidden: true,
   icon: "tomcat",
   description: "Run a WAR application in a local Tomcat server",
   debugAdapter: "java-debug",

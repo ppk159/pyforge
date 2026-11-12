@@ -546,7 +546,15 @@ describe("configuration types", () => {
     expect(rows.filter((r) => r.kind === "type").map((r) => (r.kind === "type" ? r.type.label : ""))).toContain(
       "Compound",
     );
-    expect(typeRows(types, "grad").map((r) => r.key)).toEqual(["gradle"]);
+    // The JVM types this build hides: they resolve (an imported configuration still
+    // opens in its form) but the picker never offers one.
+    const offered = typeRows(types, "").map((r) => r.key);
+    for (const jvm of ["gradle", "maven", "application", "spring-boot", "tomcat"]) {
+      expect(offered).not.toContain(jvm);
+      expect(typeRows(types, jvm)).toEqual([]);
+    }
+    expect(offered).toEqual(expect.arrayContaining(["python", "flask", "fastapi", "pytest", "program", "shell"]));
+    expect(typeRows(types, "pyt").map((r) => r.key)).toContain("pytest");
     expect(typeRows(types, "dock").map((r) => r.key)).toEqual(["group:Docker", "docker-image"]);
   });
 });

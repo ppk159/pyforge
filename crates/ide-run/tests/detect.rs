@@ -462,58 +462,30 @@ fn nested_go_discovery_does_not_follow_symlinks() {
     assert_eq!(ids(&detect(dir.path())), ["go:test:real"]);
 }
 
+/// A Python project gets no configuration from the tree: this build does not guess a
+/// test runner or a `manage.py` target, and starts nothing the project did not ask for.
+/// The interpreter is still found for a configuration that names none — see
+/// `project_python`.
 #[test]
-fn python_projects() {
+fn python_projects_get_no_detected_configurations() {
     let dir = project(&[
         ("pyproject.toml", "[tool.pytest.ini_options]\naddopts = \"-q\"\n"),
         ("uv.lock", ""),
         ("src/mypkg/__init__.py", ""),
         ("src/mypkg/__main__.py", ""),
         ("manage.py", ""),
+        ("pytest.ini", "[pytest]\n"),
+        ("requirements.txt", "requests\npytest\n"),
     ]);
-    let c = detect(dir.path());
-    // pytest stays ahead of `manage.py test`: the first test configuration is the default for context runs.
-    assert_eq!(ids(&c), ["django:runserver", "python:module:mypkg", "pytest", "django:test"]);
-    let pytest = find(&c, "pytest");
-    assert_eq!(cmdline(pytest), "uv run pytest");
-    assert!(pytest.is_test);
-    assert_eq!(pytest.debug_adapter.as_deref(), Some("debugpy"));
-    assert_eq!(cmdline(find(&c, "python:module:mypkg")), "uv run python -m mypkg");
-    assert_eq!(cmdline(find(&c, "django:runserver")), "uv run python manage.py runserver");
-    let django = find(&c, "django:test");
-    assert_eq!(cmdline(django), "uv run python manage.py test");
-    assert_eq!(django.kind, "django-test");
-    assert!(django.is_test);
-    assert_eq!(django.debug_adapter.as_deref(), Some("debugpy"));
-
-    let dir = project(&[("pytest.ini", "[pytest]\n"), ("poetry.lock", "")]);
-    assert_eq!(cmdline(find(&detect(dir.path()), "pytest")), "poetry run pytest");
-
-    let dir = project(&[("setup.cfg", "[tool:pytest]\ntestpaths = tests\n")]);
-    assert_eq!(cmdline(find(&detect(dir.path()), "pytest")), "pytest");
-
-    let dir = project(&[("requirements.txt", "requests\n"), ("app/__main__.py", "")]);
-    let c = detect(dir.path());
-    assert_eq!(ids(&c), ["python:module:app"]);
+    assert_eq!(ids(&detect(dir.path())), Vec::<String>::new());
 }
 
-#[cfg(unix)]
+/// A virtualenv alone said "this is a Python project", which minted a `pytest`
+/// configuration for it. The interpreter is still resolved for a configuration that
+/// names none, which is what `project_python` is for.
 #[test]
-fn python_virtualenv() {
-    let dir = project(&[("tox.ini", ""), (".venv/bin/python", ""), (".venv/bin/pytest", ""), ("manage.py", "")]);
-    let c = detect(dir.path());
-    assert_eq!(cmdline(find(&c, "pytest")), ".venv/bin/pytest");
-    assert_eq!(cmdline(find(&c, "django:runserver")), ".venv/bin/python manage.py runserver");
-    assert_eq!(cmdline(find(&c, "django:test")), ".venv/bin/python manage.py test");
-}
-
-#[cfg(unix)]
-#[test]
-fn bare_virtualenv_marks_a_python_project() {
-    // No packaging files: the venv alone says which interpreter / pytest to use.
+fn bare_virtualenv_is_not_a_python_project_any_more() {
     let dir = project(&[(".venv/bin/python", ""), (".venv/bin/pytest", ""), ("worker/test_w.py", "")]);
-    assert_eq!(cmdline(find(&detect(dir.path()), "pytest")), ".venv/bin/pytest");
-    let dir = project(&[(".venv/bin/python", "")]);
     assert!(detect(dir.path()).is_empty());
 }
 
@@ -1104,7 +1076,6 @@ fn all_builtin_families_find_independent_nested_projects_and_keep_owners() {
         ("go.mod", "module demo", "go"),
         ("pom.xml", "<project/>", "maven"),
         ("build.gradle.kts", "plugins { application }", "gradle"),
-        ("pyproject.toml", "[tool.pytest.ini_options]", "pytest"),
         ("phpunit.xml", "<phpunit/>", "phpunit"),
         ("Rakefile.rb", "task :test do\nend", "rake"),
         ("CMakeLists.txt", "project(demo)", "cmake"),

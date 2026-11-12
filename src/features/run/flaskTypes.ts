@@ -10,7 +10,7 @@ import type { RunConfig } from "@/platform/ipc";
 import type { RunConfigTypeContribution, RunConfigTypeField } from "@/workbench/contributions";
 import { formatArgs, parseArgs } from "./configs";
 import { commandName } from "./commandName";
-import { pythonExtras, pythonPathFields, resolveInterpreter } from "./pythonTypes";
+import { pythonExtras, pythonPathDefaults, pythonPathFields, resolveInterpreter } from "./pythonTypes";
 
 /** `FLASK_DEBUG=1` is how a Flask app is told to reload and show a debugger. */
 export const FLASK_ENVIRONMENTS = ["development", "production"] as const;
@@ -66,21 +66,13 @@ const environmentField: RunConfigTypeField = {
   hint: "The FLASK_ENV the process starts with",
 };
 
-const envFilesField: RunConfigTypeField = {
-  key: "envFiles",
-  label: ".env files",
-  mono: true,
-  placeholder: "e.g. .env, local.env",
-  hint: "Loaded before the environment variables below, in this order",
-};
-
 export const flaskType: RunConfigTypeContribution = {
   id: "flask",
   label: "Flask Server",
   icon: "file-python",
   group: "Servers",
   description: "Run a Flask application with flask run",
-  defaults: { flaskEnv: "development" },
+  defaults: { flaskEnv: "development", ...pythonPathDefaults },
   debugAdapter: "debugpy",
   fields: [
     {
@@ -105,7 +97,6 @@ export const flaskType: RunConfigTypeContribution = {
       placeholder: "e.g. --host 0.0.0.0 --port 8866",
     },
     environmentField,
-    envFilesField,
     ...pythonPathFields,
   ],
   commandLine: (p) => {
@@ -120,6 +111,7 @@ export const flaskType: RunConfigTypeContribution = {
     };
   },
   paramsFrom: flaskParams,
+  extras: (params, config) => flaskExtras(params, config.env ?? {}),
   prepareLaunch: resolveInterpreter,
 };
 
@@ -138,27 +130,22 @@ function flaskParams(c: RunConfig): Record<string, string> | null {
     app: appTarget(rest),
     parameters: formatArgs(runOptions(rest)),
     flaskEnv: c.env.FLASK_ENV ?? "development",
-    envFiles: (c.envFiles ?? []).join(", "),
   };
 }
 
 /**
- * The extras a Flask run needs: the environment variable Flask reads, and the `.env`
- * files. `FLASK_DEBUG` follows the environment, which is what PyCharm does.
+ * The extras a Flask run needs: the environment variable Flask reads, and the PYTHONPATH
+ * switches. `FLASK_DEBUG` follows the environment, which is what PyCharm does.
  */
 export function flaskExtras(
   params: Readonly<Record<string, string>>,
   env: Readonly<Record<string, string>> = {},
 ): Partial<RunConfig> & { env: Record<string, string> } {
   const environment = params.flaskEnv?.trim() || "development";
-  const extraEnv: Record<string, string> = {
-    ...env,
-    FLASK_ENV: environment,
-    ...(environment === "development" ? { FLASK_DEBUG: "1" } : {}),
-  };
-  const files = (params.envFiles ?? "")
-    .split(/[,;]/)
-    .map((f) => f.trim())
-    .filter(Boolean);
-  return { ...pythonExtras(params, files), env: extraEnv };
+  const extraEnv: Record<string, string> = { ...env, FLASK_ENV: environment };
+  if (environment === "development") extraEnv.FLASK_DEBUG = "1";
+  // Leaving development has to take the reloader with it: merging what the configuration
+  // already had kept `FLASK_DEBUG=1` and left the debugger on in production.
+  else delete extraEnv.FLASK_DEBUG;
+  return { ...pythonExtras(params), env: extraEnv };
 }

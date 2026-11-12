@@ -98,6 +98,8 @@ function jvmApplicationType(spring: boolean): RunConfigTypeContribution {
   return {
     id: spring ? "spring-boot" : "application",
     label: spring ? "Spring Boot" : "Application",
+    // JVM-only: this build's "Add New Configuration" leaves it out.
+    hidden: true,
     icon: spring ? "spring-boot" : "class",
     description: spring ? "Run a Spring Boot application" : "Run a Java main class",
     defaults: { classpath: CLASSPATH, ...(spring ? updatePolicyDefaults : {}) },

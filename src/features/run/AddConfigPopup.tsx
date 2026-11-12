@@ -11,7 +11,10 @@ export type TypeRow =
 const ROW = 24;
 
 /** "Add New Configuration" rows: types by label, grouped ones under their group; filtered by `query`. */
-export function typeRows(types: readonly RunConfigTypeContribution[], query: string): TypeRow[] {
+export function typeRows(all: readonly RunConfigTypeContribution[], query: string): TypeRow[] {
+  // A build narrows the list to the types it is for; a hidden one still resolves, so
+  // an imported configuration opens in its form.
+  const types = all.filter((t) => !t.hidden);
   const q = query.trim();
   const match = (t: RunConfigTypeContribution) =>
     q ? (fuzzyMatch(t.label, q) ?? (t.group && fuzzyMatch(t.group, q) ? [] : null)) : null;
