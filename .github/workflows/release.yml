@@ -1,0 +1,98 @@
+# Release build: a `v*` tag (or a manual run) builds PyForge on GitHub's machines
+# and attaches what it produced to a release.
+#
+# Why this exists: a local release build takes 50-70 minutes and peaks at 7.7 GB of
+# RSS (one codegen unit + LTO), which is exactly the machine a small laptop does not
+# have. The runner has a 6-hour job limit, so the build fits with room to spare once
+# the Rust cache is warm.
+#
+# Windows only, deliberately. macOS and Linux have never been built or run for this
+# fork, and a workflow that fails on two targets out of three is worse than one that
+# covers the target that is actually tested.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # A manual run builds and uploads the artifacts without touching a release: the
+  # first attempt at a workflow is usually wrong, and this is how it gets debugged.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The build is the expensive part: ~7 GB of target/ across a run. Keying on
+      # Cargo.lock keeps a warmed cache valid until a dependency actually changes.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` runs `tsc --noEmit` first, so a type error fails the release
+      # rather than shipping. `tauri build` invokes it via beforeBuildCommand.
+      - name: Build
+        run: pnpm tauri build
+
+      # The portable executable and the installers are different downloads for
+      # different people: one runs from a folder, the other installs.
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp target/release/pyforge.exe out/ 2>/dev/null || true
+          find target/release/bundle -type f \( -name '*.exe' -o -name '*.msi' \) \
+            -exec cp {} out/ \; 2>/dev/null || true
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyforge-windows
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+
+      # A manual run stops here: the artifacts are on the run's page, and no release
+      # is created. Only a tag publishes.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          draft: true
+          # Unsigned builds trip SmartScreen, and most bugs in this fork are upstream's.
+          body: |
+            PyForge ${{ github.ref_name }} — a test build, not a product.
+
+            - **Unsigned.** Windows SmartScreen will warn on first launch: choose
+              “More information” → “Run anyway”.
+            - The portable `pyforge.exe` needs WebView2, which Windows 11 has and
+              some Windows 10 installs do not. The installer brings it.
+            - No auto-update: this fork does not point at an update server.
+            - Most of what you see is upstream [OpenIDEA](https://github.com/l0ng-ai/openidea);
+              see the repository README for what this fork adds and what it lacks.

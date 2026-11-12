@@ -61,7 +61,13 @@ fixtures/**/_rv*.py
 # Agent/skill definitions, upstream CI and per-user IDE state: kept on disk (the
 # upstream tree has them, so a diff against it stays readable) but not published
 # from this repo.
+#
+# `.github/workflows/release.yml` is this fork's own and is tracked: it is the only
+# reason `.github` appears in the repo at all.
 /.agents/
 /.claude/
-/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/release.yml
 /.openidea/
