@@ -57,3 +57,11 @@ fixtures/**/_cv*.py
 fixtures/**/_fs*.py
 fixtures/**/_tv*.py
 fixtures/**/_rv*.py
+
+# Agent/skill definitions, upstream CI and per-user IDE state: kept on disk (the
+# upstream tree has them, so a diff against it stays readable) but not published
+# from this repo.
+/.agents/
+/.claude/
+/.github/
+/.openidea/
