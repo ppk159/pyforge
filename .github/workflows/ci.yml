@@ -12,7 +12,22 @@ name: CI
 on:
   push:
     branches: [master]
+    # Workflow files and prose cannot break the build, and a change to them used to
+    # start another 40-minute run whose result nobody waited for. A broken workflow
+    # is reported by GitHub itself when the run is created.
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+      - "THIRD_PARTY_LICENSES.md"
   pull_request:
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+      - "THIRD_PARTY_LICENSES.md"
   workflow_dispatch:
 
 permissions:

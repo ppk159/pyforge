@@ -45,10 +45,15 @@ jobs:
 
       # The build is the expensive part: ~7 GB of target/ across a run. Keying on
       # Cargo.lock keeps a warmed cache valid until a dependency actually changes.
+      # The workspace root is the repository root (`Cargo.toml` lists `crates/*` and
+      # `src-tauri`), so `target/` and `Cargo.lock` are both there. Pointing this at
+      # `src-tauri` named a directory that does not exist: the cache watched nothing,
+      # `hashFiles` returned the empty string, and every release compiled the 1054
+      # dependencies from scratch.
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
-          key: ${{ hashFiles('src-tauri/Cargo.lock') }}
+          workspaces: . -> target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
