@@ -61,16 +61,21 @@ pub fn find_command(command: &str, search: &OsStr, root: &Path) -> Option<PathBu
 
 fn is_executable(path: &Path) -> bool {
     let Ok(metadata) = path.metadata() else { return false };
-    if !metadata.is_file() {
-        return false;
-    }
+    // Each platform answers on its own: an early `if !is_file { return false }` before
+    // the platform block becomes `if … { return false } true` on Windows, which
+    // `clippy::needless_bool` (since 1.100) flags as reducible to `metadata.is_file()`.
+    // Each platform answers on its own: an early `if !is_file { return false }` before
+    // the platform block becomes `if … { return false } true` on Windows, which
+    // `clippy::needless_bool` (since 1.100) flags as reducible to `metadata.is_file()`.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
+        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
-    true
+    {
+        metadata.is_file()
+    }
 }
 
 /// [`search_path`]'s directories, in order and once each. Only absolute ones: a

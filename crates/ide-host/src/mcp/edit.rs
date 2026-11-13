@@ -112,17 +112,25 @@ fn whole_range(text: &str) -> Range {
 /// Whether two paths name the same file (language servers report canonical paths; on a
 /// case-insensitive file system `a.txt` and `A.txt` are one file).
 fn same_file(a: &Path, b: &Path) -> bool {
-    if a == b || matches!((dunce::canonicalize(a), dunce::canonicalize(b)), (Ok(x), Ok(y)) if x == y) {
-        return true;
-    }
+    let named = a == b || matches!((dunce::canonicalize(a), dunce::canonicalize(b)), (Ok(x), Ok(y)) if x == y);
+    // Unix has a second answer the names cannot give: one inode behind two paths.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        if let (Ok(x), Ok(y)) = (std::fs::metadata(a), std::fs::metadata(b)) {
-            return x.dev() == y.dev() && x.ino() == y.ino();
-        }
+        named || same_inode(a, b)
     }
-    false
+    #[cfg(not(unix))]
+    {
+        named
+    }
+}
+
+#[cfg(unix)]
+fn same_inode(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+        _ => false,
+    }
 }
 
 /// The text edits of `edit` for `path`.
