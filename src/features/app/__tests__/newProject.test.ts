@@ -20,12 +20,12 @@ describe("File › New Project…", () => {
 describe("Manage IDE Settings › Export Settings…", () => {
   it("exports templates, macros, layouts and view options, not per-project state", () => {
     const data: Record<string, string> = {
-      "openidea.liveTemplates.v1": "[]",
-      "openidea.macros.v1": "{}",
-      "openidea.toolWindowLayouts.v1": "{}",
-      "openidea.projectTree.options": '{"singleClickOpen":true}',
-      "openidea.projectTree.expanded:/p": "[]",
-      "openidea.runAnything.history.v1:/p": "[]",
+      "pyforge.liveTemplates.v1": "[]",
+      "pyforge.macros.v1": "{}",
+      "pyforge.toolWindowLayouts.v1": "{}",
+      "pyforge.projectTree.options": '{"singleClickOpen":true}',
+      "pyforge.projectTree.expanded:/p": "[]",
+      "pyforge.runAnything.history.v1:/p": "[]",
     };
     const keys = Object.keys(data);
     const storage = {
@@ -34,10 +34,10 @@ describe("Manage IDE Settings › Export Settings…", () => {
       getItem: (k: string) => data[k] ?? null,
     };
     expect(Object.keys(exportedStorage(storage)).sort()).toEqual([
-      "openidea.liveTemplates.v1",
-      "openidea.macros.v1",
-      "openidea.projectTree.options",
-      "openidea.toolWindowLayouts.v1",
+      "pyforge.liveTemplates.v1",
+      "pyforge.macros.v1",
+      "pyforge.projectTree.options",
+      "pyforge.toolWindowLayouts.v1",
     ]);
   });
 });

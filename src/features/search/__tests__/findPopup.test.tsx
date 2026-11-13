@@ -173,7 +173,7 @@ describe("Find in Files popup", () => {
     const pin = screen.getByRole("button", { name: "Pin Window" });
     fireEvent.click(pin);
     expect(pin).toHaveAttribute("aria-pressed", "true");
-    expect(localStorage.getItem("openidea.search.findPinned.v1")).toBe("true");
+    expect(localStorage.getItem("pyforge.search.findPinned.v1")).toBe("true");
     fireEvent.keyDown(field(), { key: "Enter" });
     expect(useFindPopup.getState().open).toBe(true);
     expect(screen.getByRole("button", { name: "Open in Find Window" })).toBeInTheDocument();
@@ -376,7 +376,7 @@ describe("footer, as IDEA", () => {
     expect(box).not.toBeChecked();
     fireEvent.keyDown(field(), { key: "b", code: "KeyB", altKey: true });
     expect(box).toBeChecked();
-    expect(localStorage.getItem("openidea.search.findNewTab.v1")).toBe("true");
+    expect(localStorage.getItem("pyforge.search.findNewTab.v1")).toBe("true");
     fireEvent.click(box);
     expect(useFindPopup.getState().newTab).toBe(false);
   });
@@ -446,7 +446,7 @@ describe("layout, as IDEA", () => {
   });
 
   it("is resizable and opens at the size it was left at", () => {
-    localStorage.setItem("openidea.search.findPopupSize.v1", JSON.stringify({ w: 700, h: 520 }));
+    localStorage.setItem("pyforge.search.findPopupSize.v1", JSON.stringify({ w: 700, h: 520 }));
     render(<FindInFilesOverlay />);
     act(() => showFindPopup(false));
     const dialog = screen.getByRole("dialog");

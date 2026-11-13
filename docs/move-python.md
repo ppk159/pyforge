@@ -55,33 +55,33 @@ from .extra import Widget              ← from ._mv_src 改成 .extra
 
 ## 一、语言与服务前提
 
-| 条件 | 拒绝原因 |
-|---|---|
-| 语言不是 Python | `Move needs the language server for this language` |
-| 该语言没有 tree-sitter 语法 | `Move needs the language server here` |
-| 文件只读 | `Cannot perform refactoring: the file is read-only` |
-| 视图里没有文档 | `no document` |
-| 文档在编辑期间变了 | `the document changed` |
+| 条件                        | 拒绝原因                                            |
+| --------------------------- | --------------------------------------------------- |
+| 语言不是 Python             | `Move needs the language server for this language`  |
+| 该语言没有 tree-sitter 语法 | `Move needs the language server here`               |
+| 文件只读                    | `Cannot perform refactoring: the file is read-only` |
+| 视图里没有文档              | `no document`                                       |
+| 文档在编辑期间变了          | `the document changed`                              |
 
 ## 二、光标与声明形态
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 光标不在类或函数上 | `place the caret on a class or function declaration` |
-| 声明读不出来 | `the declaration could not be read` |
-| 声明是嵌套的（类里的方法、函数里的函数） | `the declaration is nested; only a top-level class or function can be moved` |
-| 声明有缩进 | `the declaration is indented; only a top-level class or function can be moved` |
-| 声明的名字读不出来 | `the declaration's name could not be read` |
+| 场景                                     | 拒绝原因                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------ |
+| 光标不在类或函数上                       | `place the caret on a class or function declaration`                           |
+| 声明读不出来                             | `the declaration could not be read`                                            |
+| 声明是嵌套的（类里的方法、函数里的函数） | `the declaration is nested; only a top-level class or function can be moved`   |
+| 声明有缩进                               | `the declaration is indented; only a top-level class or function can be moved` |
+| 声明的名字读不出来                       | `the declaration's name could not be read`                                     |
 
 ## 三、目标模块
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 目标和源是同一个文件 | `the destination is the same module` |
-| 目标在另一个包 | `the destination is in another package` |
-| 目标是 `__init__.py` | `moving into __init__.py is not supported` |
-| 目标读不出来 | `the destination could not be read: <path>` |
-| 目标里已有同名声明 | `'X' is already defined in <module>` |
+| 场景                 | 拒绝原因                                    |
+| -------------------- | ------------------------------------------- |
+| 目标和源是同一个文件 | `the destination is the same module`        |
+| 目标在另一个包       | `the destination is in another package`     |
+| 目标是 `__init__.py` | `moving into __init__.py is not supported`  |
+| 目标读不出来         | `the destination could not be read: <path>` |
+| 目标里已有同名声明   | `'X' is already defined in <module>`        |
 
 ### 为什么 `__init__.py` 要拒绝
 
@@ -91,9 +91,9 @@ from .extra import Widget              ← from ._mv_src 改成 .extra
 
 ## 四、引用形态
 
-| 场景 | 拒绝原因 |
-|---|---|
-| 有地方用 `<module>.<name>` | `<module>.<name> is used in <file>` |
+| 场景                                       | 拒绝原因                             |
+| ------------------------------------------ | ------------------------------------ |
+| 有地方用 `<module>.<name>`                 | `<module>.<name> is used in <file>`  |
 | 没有任何地方 `from <module> import <name>` | `nothing imports 'X' from .<module>` |
 
 ### 为什么 `<module>.<name>` 要拒绝
@@ -114,12 +114,12 @@ x = tasks.models.Widget(...)
 
 ## 五、随行内容
 
-| 内容 | 行为 |
-|---|---|
-| 装饰器（`@dataclass` 等） | **一起移动**（属于用户看到的声明） |
-| 声明里用到的 import | **复制到目标文件**（目标已有的不重复） |
-| `from __future__ import …` | **总是复制**（去掉会改变注解语义） |
-| 不相关的 import（如 `import os`） | 不复制 |
+| 内容                              | 行为                                   |
+| --------------------------------- | -------------------------------------- |
+| 装饰器（`@dataclass` 等）         | **一起移动**（属于用户看到的声明）     |
+| 声明里用到的 import               | **复制到目标文件**（目标已有的不重复） |
+| `from __future__ import …`        | **总是复制**（去掉会改变注解语义）     |
+| 不相关的 import（如 `import os`） | 不复制                                 |
 
 判定方式：看 import 行绑定的名字有没有出现在移动的代码里。
 
@@ -144,10 +144,10 @@ x = tasks.models.Widget(...)
 
 ## 八、证据
 
-| 结论 | 出处 |
-|---|---|
-| 路径/import/间距等纯函数 | `src/editor/refactor/move.test.ts`（27 个用例） |
-| 真机端到端 | `fixtures/python-app` 的三个临时模块（验证后已删除） |
+| 结论                     | 出处                                                 |
+| ------------------------ | ---------------------------------------------------- |
+| 路径/import/间距等纯函数 | `src/editor/refactor/move.test.ts`（27 个用例）      |
+| 真机端到端               | `fixtures/python-app` 的三个临时模块（验证后已删除） |
 
 真机实测：
 
@@ -169,11 +169,11 @@ Problems 面板 9 秒 0 错误 0 警告
 
 ## 九、下一阶段
 
-| 能力 | 需要什么 |
-|---|---|
-| 跨包移动 | 重算相对导入深度，改 `__init__.py` |
-| 移动方法到另一个类 | 判断 `self` 的使用，可能需要提取为函数 |
-| 移动进 `__init__.py` | 判断包级导入的副作用 |
-| `<module>.<name>` 形式 | 连同 `import <module>` 语句一起判断和清理 |
-| 移动后删除无用 import | 需要判断源文件里还有没有别的符号用这个 import |
-| 移动整个模块（文件） | 已有 `refactor_move_files`（Rust 侧），与本篇不同 |
+| 能力                   | 需要什么                                          |
+| ---------------------- | ------------------------------------------------- |
+| 跨包移动               | 重算相对导入深度，改 `__init__.py`                |
+| 移动方法到另一个类     | 判断 `self` 的使用，可能需要提取为函数            |
+| 移动进 `__init__.py`   | 判断包级导入的副作用                              |
+| `<module>.<name>` 形式 | 连同 `import <module>` 语句一起判断和清理         |
+| 移动后删除无用 import  | 需要判断源文件里还有没有别的符号用这个 import     |
+| 移动整个模块（文件）   | 已有 `refactor_move_files`（Rust 侧），与本篇不同 |

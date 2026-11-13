@@ -1,5 +1,5 @@
-use openidea_plugin::language_features::*;
-use openidea_plugin::{
+use pyforge_plugin::language_features::*;
+use pyforge_plugin::{
     Diagnostic, Error, Invocation, Location, Plugin, Position, Range, Severity, TextEdit, register_plugin, text,
 };
 #[derive(Default)]
@@ -115,25 +115,25 @@ impl Injections for Fixture {
         }]
     }
 }
-impl openidea_plugin::providers::Providers for Fixture {
+impl pyforge_plugin::providers::Providers for Fixture {
     fn completion(
         &mut self,
         d: &Document,
         _: Position,
         _: Option<&str>,
-    ) -> Vec<openidea_plugin::providers::CompletionItem> {
-        vec![openidea_plugin::providers::CompletionItem::new(
+    ) -> Vec<pyforge_plugin::providers::CompletionItem> {
+        vec![pyforge_plugin::providers::CompletionItem::new(
             &format!("{}:{}", d.language, d.text),
-            openidea_plugin::providers::CompletionKind::Text,
+            pyforge_plugin::providers::CompletionKind::Text,
         )]
     }
 }
-impl openidea_plugin::hover::HoverProvider for Fixture {
-    fn hover(&mut self, d: &Document, _: Position) -> Option<openidea_plugin::hover::Hover> {
-        Some(openidea_plugin::hover::Hover::new(format!("{}:{}", d.language, d.text)))
+impl pyforge_plugin::hover::HoverProvider for Fixture {
+    fn hover(&mut self, d: &Document, _: Position) -> Option<pyforge_plugin::hover::Hover> {
+        Some(pyforge_plugin::hover::Hover::new(format!("{}:{}", d.language, d.text)))
     }
 }
-impl openidea_plugin::diagnostics::DiagnosticsProvider for Fixture {
+impl pyforge_plugin::diagnostics::DiagnosticsProvider for Fixture {
     fn diagnostics(&mut self, d: &Document) -> Vec<Diagnostic> {
         vec![
             Diagnostic::new(range(0, 1), Severity::Warning, "outside"),

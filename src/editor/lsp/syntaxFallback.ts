@@ -5,7 +5,7 @@
  * what the structure service is certain about; ambiguity becomes candidates.
  */
 import type { ChangeSpec, Text } from "@codemirror/state";
-import type { Location, Pos, Range, SymbolKind, SymbolMatch } from "@/bindings";
+import type { IdentifierRole, Location, Pos, Range, SymbolKind, SymbolMatch } from "@/bindings";
 import { call, commands } from "@/platform/ipc";
 import { structure, type Locals, type LocalSymbol, type NodeAt } from "@/editor/structure";
 import { comparePos, rangeContains, rangeToOffsets } from "./positions";
@@ -105,10 +105,100 @@ export function compatibleFiles(from: string, target: string): boolean {
   return family ? family.includes(b) : false;
 }
 
-/** Current file first, then files of the same extension, then by path / position. */
-export function rankTargets<T extends Location>(targets: readonly T[], currentPath: string): T[] {
+/**
+ * The class a member access is known to be on, from syntax alone.
+ *
+ * `factory_dao.query(...)` says nothing about a type, but when this file also
+ * holds `factory_dao = FactoryDao(…)` the declaration is a syntactic fact: the
+ * right-hand side is a bare name that the index knows as a class. This is the
+ * one case the fallback may use to narrow candidates; every other shape (a call
+ * result, an element of a list, a parameter) stays "any member of that name".
+ *
+ * Returns the class name, or null when the file does not say.
+ */
+export function assignedClassName(
+  text: Text,
+  occurrences: readonly { range: Range; qualified: boolean }[],
+  name: string,
+): string | null {
+  for (const o of occurrences) {
+    if (o.qualified) continue;
+    const { from, to } = rangeToOffsets(text, o.range);
+    const lineStart = text.lineAt(from).from;
+    const lineEnd = text.lineAt(to).to;
+    const line = text.sliceString(lineStart, lineEnd);
+    // `name = Class(...)` / `name: T = Class(...)`, nothing else on that side.
+    // Escape the name (it is an identifier, but `$` is legal in some languages)
+    // and keep the backslashes literal through `String.raw`.
+    const m = new RegExp(String.raw`^\s*${name}\s*(?::[^=]+)?=\s*([\p{Lu}][\p{L}\p{N}_]*)\s*\(`, "u").exec(line);
+    if (m) return m[1]!;
+  }
+  return null;
+}
+
+/**
+ * Current file first, then files of the same extension, then by path / position.
+ *
+ * `container` breaks the ties the path cannot: when the caller knows the member
+ * belongs to one class (`FactoryDao`), its own members come before the same name
+ * on any other class.
+ */
+/**
+ * Module files a local name may come from, most specific first, from the file's own
+ * import statements.
+ *
+ * `from a.b import c` is ambiguous in the source text alone: `c` is either a module
+ * (`a/b/c.py`) or a name inside `a/b.py`. Both paths are returned and a candidate that
+ * matches either wins — the file itself is the witness.
+ */
+export function importedModulePaths(text: Text, name: string): string[] {
+  const source = text.toString();
+  const out: string[] = [];
+  const slashed = (mod: string) => mod.replace(/\./g, "/");
+  for (const m of source.matchAll(/^[ 	]*from[ 	]+([\w.]+)[ 	]+import[ 	]+(.+)$/gm)) {
+    const mod = m[1]!;
+    for (const part of m[2]!.split(",")) {
+      const words = part
+        .trim()
+        .replace(/[()]/g, "")
+        .split(/\s+as\s+/);
+      const imported = words[0]?.trim();
+      const local = (words[1] ?? words[0])?.trim();
+      if (!imported || local !== name) continue;
+      out.push(`${slashed(mod)}/${imported}.py`, `${slashed(mod)}.py`);
+    }
+  }
+  for (const m of source.matchAll(/^[ 	]*import[ 	]+([\w.]+)(?:[ 	]+as[ 	]+(\w+))?/gm)) {
+    const mod = m[1]!;
+    const local = m[2] ?? mod.split(".")[0]!;
+    if (local === name) out.push(`${slashed(mod)}.py`);
+  }
+  return out;
+}
+
+/**
+ * Order candidates by what the syntax actually says about them.
+ *
+ * `container` (the class this file binds the object to) is the strongest signal, then
+ * `modules` (the files the receiver was imported from), then the current file, then the
+ * extension family. The current file is *last* among these on purpose: for `obj.method`
+ * the object is usually something this module imported, so preferring a same-named
+ * method of the file's own class picked the wrong one often enough to be a bug.
+ */
+export function rankTargets<T extends Location & { container?: string | null }>(
+  targets: readonly T[],
+  currentPath: string,
+  container?: string | null,
+  modules: readonly string[] = [],
+): T[] {
   const ext = extensionOf(currentPath);
-  const rank = (t: T) => (t.path === currentPath ? 0 : extensionOf(t.path) === ext ? 1 : 2);
+  const fromModule = (t: T) => modules.some((m) => t.path.endsWith(`/${m}`) || t.path.endsWith(m));
+  const rank = (t: T) => {
+    if (container && t.container === container) return 0;
+    if (fromModule(t)) return 1;
+    if (container && t.container) return 3;
+    return t.path === currentPath ? 2 : extensionOf(t.path) === ext ? 4 : 6;
+  };
   return [...targets].sort(
     (a, b) => rank(a) - rank(b) || a.path.localeCompare(b.path) || comparePos(a.range.start, b.range.start),
   );
@@ -153,15 +243,68 @@ export async function declarationFallback(
   const name = locals?.status === "notLocal" ? locals.name : identifierText(text, at);
   if (!name) return { kind: "targets", targets: [], ambiguous: false };
   // A member (`obj.name`) can be any member of that name; only a plain name has a syntactic role.
-  const role = locals?.status === "notLocal" && locals.reason === "member" ? "other" : usageRole(at);
+  const member = locals?.status === "notLocal" && locals.reason === "member";
+  const role = member ? "other" : usageRole(at);
   const matches = await call(commands.findSymbols(name, "all", SYMBOL_LIMIT));
   const symbols = filterSymbols(matches, name, role).filter((s) => compatibleFiles(doc.path, s.path));
+  // `obj.name` where this file also says `obj = Class(…)`: the class is a syntactic
+  // fact, so its own members come first. Everything else stays "any member".
+  const origin = member
+    ? await memberOrigin(doc, text, at, signal)
+    : { container: null as string | null, modules: [] as string[] };
   const targets = rankTargets(
     symbols.map((s) => ({ path: s.path, range: s.range, name: s.name, kind: s.kind, container: s.container })),
     doc.path,
+    origin.container,
+    origin.modules,
   );
   return { kind: "targets", targets, ambiguous: targets.length > 1 };
 }
+
+/**
+ * The class a member access is certainly on, when the same file binds the object
+ * to one. Resolves the receiver's name from the `attribute` node, then looks for
+ * `receiver = Class(…)` among this file's identifiers.
+ */
+/** The bare name an `obj.method` access is on, or null when it is not a plain name. */
+export function receiverName(text: Text, at: NodeAt | null): string | null {
+  const attribute = at?.ancestors.find((a) => MEMBER_ACCESS.has(a.kind));
+  if (!attribute) return null;
+  const { from, to } = rangeToOffsets(text, attribute.range);
+  const source = text.sliceString(from, to);
+  // `a.b.c` → the receiver is everything before the last dot; only a bare name is
+  // something this file can bind to a class or a module.
+  const dot = source.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const receiver = source.slice(0, dot).trim();
+  return IDENT.test(receiver) ? receiver : null;
+}
+
+/** What `obj.method` says about where `method` lives, from this file alone. */
+export async function memberOrigin(
+  doc: { doc: number; path: string; language: string },
+  text: Text,
+  at: NodeAt | null,
+  signal?: AbortSignal,
+): Promise<{ container: string | null; modules: string[] }> {
+  const receiver = receiverName(text, at);
+  if (!receiver) return { container: null, modules: [] };
+  const occurrences = await structure.identifiers(doc.doc, receiver, { signal });
+  // `plan_service = PlanService()` binds the class; `from … import plan_service` binds
+  // the module. Either is a syntactic fact about this file.
+  return {
+    container: assignedClassName(text, occurrences, receiver),
+    modules: importedModulePaths(text, receiver),
+  };
+}
+
+/** Node kinds whose text is `receiver.member`. */
+const MEMBER_ACCESS: ReadonlySet<string> = new Set([
+  "attribute",
+  "member_expression",
+  "field_expression",
+  "selector_expression",
+]);
 
 const IDENT = /^[\p{L}_$][\p{L}\p{N}_$]*$/u;
 
@@ -193,6 +336,82 @@ export function localHighlights(locals: Locals): LocalHighlight[] | null {
   return [
     { range: symbol.definition, kind: "write" as const },
     ...symbol.references.map((range) => ({ range, kind: "text" as const })),
+  ].sort((a, b) => comparePos(a.range.start, b.range.start));
+}
+
+/**
+ * Names a file imports, as `(name, line)` — `from a.b import c` binds `c`,
+ * `from a.b import c as d` binds `d`, `import a.b as e` binds `e` (a plain
+ * `import a.b` binds `a`).
+ *
+ * A module or an imported function is out of scope for `locals`, so highlighting it
+ * went nowhere; these bindings are certain from the import statement alone.
+ */
+export function importedBindings(text: Text): Map<string, number> {
+  const out = new Map<string, number>();
+  const source = text.toString();
+  const lineOf = (index: number) => text.lineAt(index).number - 1;
+  const add = (name: string, index: number) => {
+    if (!out.has(name)) out.set(name, lineOf(index));
+  };
+  const from = /^[ 	]*from[ 	]+[\w.]+[ 	]+import[ 	]+(.+)$/gm;
+  for (const m of source.matchAll(from)) {
+    for (const part of parenList(m[1]!)) {
+      const words = part.split(/\s+as\s+/);
+      const imported = words[0]?.trim();
+      const local = (words[1] ?? words[0])?.trim();
+      if (!imported || !local || !IDENT.test(local)) continue;
+      // A name imported from a package may be a module or a member; either way the
+      // statement is where this file binds it.
+      add(local, (m.index ?? 0) + m[0].length - m[1]!.length + m[1]!.indexOf(part));
+    }
+  }
+  const plain = /^[ 	]*import[ 	]+([\w.]+(?:[ 	]+as[ 	]+\w+)?(?:[ 	]*,[ 	]*[\w.]+(?:[ 	]+as[ 	]+\w+)?)*)/gm;
+  for (const m of source.matchAll(plain)) {
+    let offset = (m.index ?? 0) + m[0].length - m[1]!.length;
+    for (const part of m[1]!.split(",")) {
+      const words = part.trim().split(/\s+as\s+/);
+      const dotted = words[0]?.trim();
+      // `import a.b` binds `a`; `import a.b as c` binds `c`.
+      const local = (words[1] ?? dotted?.split(".")[0])?.trim();
+      if (local && IDENT.test(local)) add(local, offset + (part.length - part.trimStart().length));
+      offset += part.length + 1;
+    }
+  }
+  return out;
+}
+
+/** The names of a possibly parenthesized, possibly multi-line `import` list. */
+function parenList(raw: string): string[] {
+  const inner = raw.trim().replace(/^\(/, "").replace(/\)$/, "");
+  return inner
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Highlighter for a name this file imported: the binding line plus every occurrence
+ * that is not a member access, a keyword argument or a string/comment (the structure
+ * service already leaves the last two out of `identifiers`).
+ *
+ * Narrower than a real reference search on purpose — a same-named local elsewhere in
+ * the file is not the import, and marking it would be a lie.
+ */
+export function importedHighlights(
+  occurrences: readonly { range: Range; qualified: boolean; role: IdentifierRole }[],
+  bindingLine: number,
+): LocalHighlight[] {
+  const binding = occurrences.find(
+    (o) => o.range.start.line === bindingLine && !o.qualified && o.role !== "parameter" && o.role !== "keywordArgument",
+  );
+  const rest = occurrences
+    .filter((o) => o !== binding && !o.qualified && o.role !== "keywordArgument")
+    .map((o) => o.range);
+  const marker = binding?.range;
+  return [
+    ...(marker ? [{ range: marker, kind: "write" as const }] : []),
+    ...rest.map((range) => ({ range, kind: "text" as const })),
   ].sort((a, b) => comparePos(a.range.start, b.range.start));
 }
 

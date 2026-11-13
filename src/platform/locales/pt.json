@@ -8,7 +8,7 @@
   "app.about.platform": "Plataforma",
   "app.about.runtime": "Runtime",
   "app.about.showConfig": "Abrir pasta de configuração",
-  "app.about.tagline": "Uma IDE de código aberto inspirada no IntelliJ IDEA",
+  "app.about.tagline": "Uma IDE Python que lê sintaxe, não tipos",
   "app.about.thirdParty": "Inclui ícones do IntelliJ Platform (Apache-2.0).",
   "app.about.title": "Sobre o OpenIDEA",
   "app.about.version": "Versão",

@@ -77,7 +77,10 @@ export function checkBuild(dir: string): string[] {
   for (const file of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
     if (!file.endsWith(".js")) continue;
     const path = resolve(dir, file);
-    for (const error of checkSource(readFileSync(path, "utf8"), startup.has(path))) errors.push(`${file}: ${error}`);
+    // `readdirSync` answers with the platform's separator; a build-relative path is
+    // reported with `/` everywhere, so the message reads the same in CI and locally.
+    const shown = file.replaceAll("\\", "/");
+    for (const error of checkSource(readFileSync(path, "utf8"), startup.has(path))) errors.push(`${shown}: ${error}`);
   }
   return errors;
 }

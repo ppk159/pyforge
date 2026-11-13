@@ -49,11 +49,15 @@ import { editorService } from "@/workbench/contributions";
 import { fileIconName } from "@/ui";
 import { NO_SERVER, debounce, docOf, isUnavailable, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, rangeToOffsets } from "./positions";
+import { attributeHighlights } from "./attributeHighlight";
 import {
   SYNTAX_NOTE,
   declarationFallback,
+  importedBindings,
+  importedHighlights,
   isSelfTarget,
   localHighlights,
+  type LocalHighlight,
   type DeclarationTarget,
 } from "./syntaxFallback";
 import { showHint, showPendingHint } from "./hint";
@@ -855,11 +859,56 @@ async function syntaxHighlights(view: EditorView, doc: EditorDocContext, head: n
     if (!(await structure.support(doc.language)).locals) return null;
     await whenSynced(view);
     if (view.state.selection.main.head !== head) return null;
-    return localHighlights(await structure.locals(doc.doc, offsetToPos(view.state.doc, head)));
+    const pos = offsetToPos(view.state.doc, head);
+    const locals = await structure.locals(doc.doc, pos);
+    const local = localHighlights(locals);
+    if (local) return local;
+    // `self.plan_dao`: a member, so not a local. The file states the class and where the
+    // attribute is declared, which is enough to highlight the accesses inside it.
+    if (locals.status === "notLocal" && locals.reason === "member") {
+      const attribute = await attributeHighlightsAt(view, doc, locals.name, locals.range.start.line);
+      if (attribute) return attribute;
+    }
+    // A local variable the scope query cannot decide, or a name this file imported:
+    // `plan_service.get_plan_detail()` never resolves to a local, so highlighting an
+    // imported service used to do nothing at all.
+    return await importedHighlightsAt(view, doc, head);
   } catch (e) {
     if (!isCancelled(e)) console.debug("[syntax] highlight fallback", e);
     return null;
   }
+}
+
+/** Highlights for the attribute `name`, when `line` sits inside a class that declares it. */
+async function attributeHighlightsAt(
+  view: EditorView,
+  doc: EditorDocContext,
+  name: string,
+  line: number,
+): Promise<LocalHighlight[] | null> {
+  const occurrences = await structure.identifiers(doc.doc, name);
+  if (!occurrences.length) return null;
+  const lines = view.state.doc.toString().split("\n");
+  return attributeHighlights(lines, line, name, occurrences);
+}
+
+/** Usages of the name at `head` when that name is one this file imports. */
+async function importedHighlightsAt(
+  view: EditorView,
+  doc: EditorDocContext,
+  head: number,
+): Promise<ReturnType<typeof importedHighlights> | null> {
+  const state = view.state;
+  const word = state.wordAt(head);
+  if (!word) return null;
+  const name = state.sliceDoc(word.from, word.to);
+  const bindings = importedBindings(state.doc);
+  const bindingLine = bindings.get(name);
+  if (bindingLine === undefined) return null;
+  const occurrences = await structure.identifiers(doc.doc, name);
+  if (state.selection.main.head !== head || state.doc !== view.state.doc) return null;
+  if (!occurrences.length) return null;
+  return importedHighlights(occurrences, bindingLine);
 }
 
 /** ⌘⇧F7: highlight usages of the symbol at the caret until Escape; again on a highlighted usage removes them. */

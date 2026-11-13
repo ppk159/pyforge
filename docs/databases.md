@@ -3,7 +3,7 @@
 The Database tool window (View ▸ Tool Windows ▸ Database) connects to SQLite,
 PostgreSQL, MySQL/MariaDB, Microsoft SQL Server, ClickHouse and Oracle, plus the
 wire-compatible products listed in **New ▸ Data Source**. Connections are saved
-per project in `.openidea/data-sources.toml`; passwords live outside the project
+per project in `.pyforge/data-sources.toml`; passwords live outside the project
 (and never in that file).
 
 ## Oracle: Oracle Instant Client

@@ -10,7 +10,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-openidea-plugin = { path = "../../../../../sdk/rust/openidea-plugin" }
+pyforge-plugin = { path = "../../../../../sdk/rust/pyforge-plugin" }
 
 [profile.release]
 opt-level = "s"

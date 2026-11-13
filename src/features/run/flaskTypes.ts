@@ -69,7 +69,7 @@ const environmentField: RunConfigTypeField = {
 export const flaskType: RunConfigTypeContribution = {
   id: "flask",
   label: "Flask Server",
-  icon: "file-python",
+  icon: "flask",
   group: "Servers",
   description: "Run a Flask application with flask run",
   defaults: { flaskEnv: "development", ...pythonPathDefaults },

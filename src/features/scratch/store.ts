@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { pushRecent, type ScratchLanguage } from "./model";
 
-const RECENT_KEY = "openidea.scratch.recentLanguages";
+const RECENT_KEY = "pyforge.scratch.recentLanguages";
 
 function readRecent(): string[] {
   try {

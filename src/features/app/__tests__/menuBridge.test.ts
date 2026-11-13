@@ -110,8 +110,8 @@ describe("menu event routing", () => {
   it("runs the action named by the event, passing the argument", async () => {
     const run = vi.fn();
     const off = registerAction({ id: "test.menuRoute", title: "Test", run });
-    await expect(routeMenuEvent({ action: "test.menuRoute", arg: "/p/openidea" })).resolves.toBe(true);
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ arg: "/p/openidea" }));
+    await expect(routeMenuEvent({ action: "test.menuRoute", arg: "/p/pyforge" })).resolves.toBe(true);
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ arg: "/p/pyforge" }));
     await routeMenuEvent({ action: "test.menuRoute", arg: null });
     expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ arg: undefined }));
     off();

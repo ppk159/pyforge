@@ -52,7 +52,10 @@ body,
 .splash-wordmark-text {
   width: auto;
   height: auto;
-  font: 500 15px/1.21 Inter, system-ui, sans-serif;
+  font:
+    500 15px/1.21 Inter,
+    system-ui,
+    sans-serif;
   letter-spacing: 0.2px;
   color: inherit;
   white-space: nowrap;

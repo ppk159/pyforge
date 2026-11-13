@@ -1,5 +1,5 @@
 /**
- * `~/.openideavimrc` / `~/.ideavimrc`: the safe subset IdeaVim users keep in
+ * `~/.pyforgevimrc` / `~/.ideavimrc`: the safe subset IdeaVim users keep in
  * their rc file — `set` options, `map` variants, `let mapleader` — plus
  * IdeaVim's `:action <id>` / `<Action>(id)` mappings, which run OpenIDEA
  * actions. `source` reads another file by the same rules. Everything else is
@@ -28,7 +28,7 @@ export interface RcParseResult {
   ignored: RcIgnored[];
 }
 
-export const RC_FILES = [".openideavimrc", ".ideavimrc"] as const;
+export const RC_FILES = [".pyforgevimrc", ".ideavimrc"] as const;
 
 const SOURCE_RE = /^so(?:urce)?\s+(.+)$/;
 const MAP_RE = /^(n|v|x|i|o)?(map|noremap)$/;

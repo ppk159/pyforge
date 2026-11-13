@@ -1,4 +1,4 @@
-//! `PluginEngine::check_component` (what installing and `openidea-plugin check`
+//! `PluginEngine::check_component` (what installing and `pyforge-plugin check`
 //! run) refuses a component the IDE could not start: every import has to link
 //! against the host, function by function, and the plugin world's exports have
 //! to be there, not only the interface names and their API version.

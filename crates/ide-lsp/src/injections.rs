@@ -18,7 +18,7 @@ use std::{
 
 pub const MAX_INJECTED_DOCUMENT_BYTES: usize = 2 << 20;
 const MAX_DOCUMENTS: usize = 32;
-const MARKER: &str = ".openidea-injected-";
+const MARKER: &str = ".pyforge-injected-";
 const ORIGIN: &str = "$openideaInjection";
 pub(super) const COMMAND: &str = "$openideaInjectedCommand";
 
@@ -655,7 +655,7 @@ mod tests {
         assert_eq!(mapped.range, injection(3, 9).range);
         let outside = Location::file(virtual_path.clone(), Range::new(Pos::default(), Pos::new(0, 2)));
         assert!(mgr.map_injected_location(outside).is_none());
-        let real = root.path().join(".real.openidea-injected-123.sql");
+        let real = root.path().join(".real.pyforge-injected-123.sql");
         std::fs::write(&real, "real file").unwrap();
         let other = Location::file(real, Range::default());
         assert_eq!(mgr.map_injected_location(other.clone()), Some(other));

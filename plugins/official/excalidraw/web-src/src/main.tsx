@@ -109,7 +109,7 @@ function App({ bridge }: { bridge: OpenideaBridge }) {
   );
 }
 
-const bridge = window.openidea;
+const bridge = window.pyforge;
 const root = createRoot(document.getElementById("root")!);
 if (bridge) {
   routeDownloadsToTheIde(bridge);

@@ -407,6 +407,32 @@ describe("workbench shell", () => {
     dispose();
     useProject.setState({ project: null });
   });
+
+  it("shows a tab window as one file: no stripes, no tool windows, no project name", async () => {
+    const { useProject } = await import("@/platform/project");
+    const { Workbench } = await import("./Workbench");
+    const C = () => <div>project view</div>;
+    const dispose = registerToolWindow({
+      id: "project",
+      title: "Project",
+      icon: "folder",
+      anchor: "left",
+      component: C,
+    });
+    useProject.setState({
+      project: { root: "/shell", name: "shell-demo", trusted: true, isGit: false, settings: {} },
+      tabWindow: true,
+    });
+    const { unmount } = render(<Workbench />);
+    // The shared project is still there, so nothing may look like "no project"…
+    expect(document.querySelector("[data-light-edit]")).not.toBeNull();
+    // …but the tree and the project name are gone.
+    expect(screen.queryByText("project view")).toBeNull();
+    expect(screen.queryByText("shell-demo")).toBeNull();
+    unmount();
+    dispose();
+    useProject.setState({ project: null, tabWindow: false });
+  });
 });
 
 describe("Don't Show Again", () => {

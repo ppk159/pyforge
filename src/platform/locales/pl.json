@@ -8,7 +8,7 @@
   "app.about.platform": "Platforma",
   "app.about.runtime": "Środowisko uruchomieniowe",
   "app.about.showConfig": "Otwórz folder konfiguracyjny",
-  "app.about.tagline": "Otwartoźródłowe środowisko IDE inspirowane IntelliJ IDEA",
+  "app.about.tagline": "IDE Pythona, które czyta składnię, nie typy",
   "app.about.thirdParty": "Zawiera ikony z platformy IntelliJ (Apache-2.0).",
   "app.about.title": "Informacje o OpenIDEA",
   "app.about.version": "Wersja",

@@ -91,7 +91,7 @@ class EndpointMarker extends GutterMarker {
 }
 
 export function endpointEditorExtension(ctx: EditorDocContext): Extension {
-  if (ctx.language === "http") return EditorState.languageData.of(() => [{ openideaCompletion: endpointCompletion }]);
+  if (ctx.language === "http") return EditorState.languageData.of(() => [{ pyforgeCompletion: endpointCompletion }]);
   if (ctx.virtual) return [];
   return [
     marks,
@@ -131,7 +131,7 @@ export function endpointEditorExtension(ctx: EditorDocContext): Extension {
       },
     ),
     gutter({
-      class: `${styles.runGutter} cm-openidea-gutter-endpoints`,
+      class: `${styles.runGutter} cm-pyforge-gutter-endpoints`,
       markers: (view) =>
         RangeSet.of(
           view.state.field(marks).map((m) => new EndpointMarker().range(m.pos)),

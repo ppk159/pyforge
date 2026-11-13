@@ -36,11 +36,17 @@
       return "Unknown startup error";
     }
   };
-  const show = (reason) => {
+  /**
+   * `slow` marks the 30-second warning: a start that is merely late, not broken. The
+   * app may still come up (dev builds take 35-45 s), and then `onReady` must be able
+   * to take this panel away — so the document keeps a distinct state for it and
+   * `splash.ts` does not treat it as a failed boot.
+   */
+  const show = (reason, slow = false) => {
     if (failed || ready) return;
     failed = true;
     window.clearTimeout(timer);
-    document.documentElement.dataset.boot = "failed";
+    document.documentElement.dataset.boot = slow ? "slow" : "failed";
     const render = () => {
       const panel = document.createElement("section");
       panel.id = "boot-error";
@@ -72,7 +78,7 @@
         }
       });
       const report = document.createElement("a");
-      report.href = "https://github.com/l0ng-ai/openidea/issues/new?template=bug_report.yml";
+      report.href = "https://github.com/l0ng-ai/pyforge/issues/new?template=bug_report.yml";
       report.target = "_blank";
       report.rel = "noreferrer";
       report.textContent = text.link;
@@ -104,14 +110,14 @@
     delete document.documentElement.dataset.boot;
     window.removeEventListener("error", onError, true);
     window.removeEventListener("unhandledrejection", onRejection);
-    window.removeEventListener("openidea:boot-error", onBootError);
-    window.removeEventListener("openidea:boot-ready", onReady);
+    window.removeEventListener("pyforge:boot-error", onBootError);
+    window.removeEventListener("pyforge:boot-ready", onReady);
   };
-  const timer = window.setTimeout(() => show(text.timeout), 30_000);
+  const timer = window.setTimeout(() => show(text.timeout, true), 30_000);
   window.addEventListener("error", onError, true);
   window.addEventListener("unhandledrejection", onRejection);
-  window.addEventListener("openidea:boot-error", onBootError);
-  window.addEventListener("openidea:boot-ready", onReady);
+  window.addEventListener("pyforge:boot-error", onBootError);
+  window.addEventListener("pyforge:boot-ready", onReady);
 })();
 
 // Runs before the app's CSS loads: restores the last theme (theme.ts stores it)
@@ -125,7 +131,7 @@ try {
     style.textContent = css;
     document.head.appendChild(style);
   };
-  const last = JSON.parse(localStorage.getItem("openidea.theme") ?? "null");
+  const last = JSON.parse(localStorage.getItem("pyforge.theme") ?? "null");
   if (last?.theme) root.dataset.theme = last.theme;
   if (last?.contrast) root.dataset.contrast = last.contrast;
   // A built-in palette theme (Solarized, One) over its light / dark base (tokens.css).
@@ -133,9 +139,9 @@ try {
     root.dataset.colorTheme = last.colorTheme;
   // A plugin theme's stylesheet (plugins/bridge.ts), so the workbench doesn't
   // show the built-in theme until the plugin host answers.
-  const plugin = JSON.parse(localStorage.getItem("openidea.pluginTheme") ?? "null");
+  const plugin = JSON.parse(localStorage.getItem("pyforge.pluginTheme") ?? "null");
   if (typeof plugin?.id === "string" && typeof plugin.css === "string" && !/[<\\]|url\(/i.test(plugin.css)) {
-    addStyle("openidea-plugin-theme", plugin.css);
+    addStyle("pyforge-plugin-theme", plugin.css);
     root.dataset.pluginTheme = plugin.id;
     root.dataset.pluginThemeKind = root.dataset.theme = plugin.kind === "light" ? "light" : "dark";
     delete root.dataset.contrast;
@@ -147,7 +153,7 @@ try {
     ["--boot-fg", last?.fg],
     ["--boot-accent", last?.accent],
   ].filter(([, v]) => typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v));
-  if (colors.length) addStyle("openidea-boot-colors", `:root { ${colors.map(([k, v]) => `${k}: ${v};`).join(" ")} }`);
+  if (colors.length) addStyle("pyforge-boot-colors", `:root { ${colors.map(([k, v]) => `${k}: ${v};`).join(" ")} }`);
 } catch {
   /* storage unavailable */
 }

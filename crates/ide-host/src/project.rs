@@ -92,6 +92,15 @@ impl Host {
         {
             return Ok(current);
         }
+        // Another window already has this project open: share its `Arc` instead of
+        // indexing the tree again. A second index costs 1-3 s of work and a duplicate of
+        // the symbol table, documents and watchers, and the two copies would then drift
+        // (each has its own `Documents`, so an edit in one window is invisible to the
+        // other until it is saved and reloaded).
+        if let Some(shared) = self.project_open_elsewhere(&root) {
+            self.insert_project(window, shared.clone());
+            return Ok(shared);
+        }
         self.close_project(window);
         self.wait_detached_closes();
         let sink: SharedSink = (self.sink_for)(window);
@@ -672,7 +681,7 @@ impl Host {
                     // Outside the app data dir: its path has spaces on macOS, which trips up build scripts.
                     dirs::home_dir()
                         .unwrap_or_else(|| self.data_dir.clone())
-                        .join(".openidea")
+                        .join(".pyforge")
                         .join("worktrees")
                         .join(project_key)
                 }),
@@ -1813,7 +1822,7 @@ mod agent_worktree_tests {
 
     #[test]
     fn agent_worktrees_sit_next_to_the_project() {
-        let fallback = || PathBuf::from("/home/me/.openidea/worktrees/key");
+        let fallback = || PathBuf::from("/home/me/.pyforge/worktrees/key");
         let project = Path::new("/work").join("acme-api");
         assert_eq!(agent_worktrees_dir(&project, fallback), Path::new("/work").join("acme-api.worktrees"));
         assert_eq!(agent_worktrees_dir(Path::new("/"), fallback), fallback());

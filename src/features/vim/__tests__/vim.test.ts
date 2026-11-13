@@ -43,14 +43,14 @@ describe("Vim mode toggle", () => {
     expect(JSON.parse(localStorage.getItem(VIM_SETTINGS_KEY)!).enabled).toBe(true);
     await until(hasContribution);
     expect(getContext().vimMode).toBe(true);
-    expect(diffSide.dom.hasAttribute("data-openidea-vim")).toBe(true);
+    expect(diffSide.dom.hasAttribute("data-pyforge-vim")).toBe(true);
     expect(getCM(diffSide)).not.toBeNull();
 
     await executeAction("vim.toggle");
     expect(useVimSettings.getState().enabled).toBe(false);
     expect(hasContribution()).toBe(false);
     expect(getContext()["vim.mode"]).toBe("");
-    expect(diffSide.dom.hasAttribute("data-openidea-vim")).toBe(false);
+    expect(diffSide.dom.hasAttribute("data-pyforge-vim")).toBe(false);
     expect(getCM(diffSide)).toBeNull();
     diffSide.destroy();
   });

@@ -1,4 +1,4 @@
-use openidea_plugin::{Error, HttpRequest, StatusItem, host, mock::MockHost};
+use pyforge_plugin::{Error, HttpRequest, StatusItem, host, mock::MockHost};
 
 #[test]
 fn ipc_is_granted_bounded_and_closed_on_drop() {

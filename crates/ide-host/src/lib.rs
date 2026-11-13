@@ -1,6 +1,6 @@
 //! The IDE backend without a UI toolkit: open projects per window, terminals,
 //! processes, settings and the remote services. The desktop shell (`src-tauri`)
-//! wraps one [`Host`] and adds windows and menus; `openidea-server`
+//! wraps one [`Host`] and adds windows and menus; `pyforge-server`
 //! runs one on a remote machine and serves it over JSON-RPC ([`rpc`]).
 
 pub mod data_dirs;
@@ -101,6 +101,20 @@ pub struct Host {
 const EXIT_SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl Host {
+    /// A project already open in some window whose root is `root` and that is not a
+    /// LightEdit session.
+    ///
+    /// Opening a project hands the caller this `Arc` instead of building a second one, so
+    /// index, documents, watchers and language servers are shared. Sorted by window name
+    /// so which one is picked does not depend on hash order.
+    pub(crate) fn project_open_elsewhere(&self, root: &std::path::Path) -> Option<Arc<Project>> {
+        let projects = self.projects.read();
+        let mut windows: Vec<&String> =
+            projects.iter().filter(|(_, p)| p.root == root && !p.light).map(|(w, _)| w).collect();
+        windows.sort();
+        windows.first().and_then(|w| projects.get(*w)).cloned()
+    }
+
     /// Windows whose current project has this root.
     pub(crate) fn windows_for_root(&self, root: &std::path::Path) -> Vec<String> {
         let mut windows: Vec<_> =
@@ -256,6 +270,14 @@ impl Host {
             self.cancel_request(request);
         }
         let project = self.projects.write().remove(window)?;
+        // The same `Arc` may be open in other windows (see `project_open_elsewhere`):
+        // closing one window must not tear down a project the others are still editing.
+        // Only the last holder shuts it down.
+        if self.projects.read().values().any(|p| Arc::ptr_eq(p, &project)) {
+            // `window` is already detached above; what it shared stays running for the
+            // windows that still hold it.
+            return None;
+        }
         if self.windows_for_root(&project.root).is_empty()
             && let Some(plugins) = self.plugin_host()
         {
@@ -493,6 +515,42 @@ impl Host {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two windows on one root share an `Arc`: the second open must not index again, and
+    /// closing one must leave the project usable from the other.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_second_window_shares_the_open_project_and_survives_its_close() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(temp.path()).unwrap();
+        let root = base.join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("main.rs"), "fn main() {}
+").unwrap();
+        let host = Host::new(HostConfig {
+            config_dir: base.join("config"),
+            data_dir: base.join("data"),
+            local_data_dir: base.join("local"),
+            languages: Arc::new(ide_language::LanguageRegistry::load(None).unwrap()),
+            syntax: Arc::default(),
+            sink_for: Box::new(|_| Arc::new(|_| {})),
+            owner: |w| w,
+            runtime: tokio::runtime::Handle::current(),
+            project_environment: false,
+        });
+        let first = host.open_project("main", &root).unwrap();
+        let second = host.open_project("project-1", &root).unwrap();
+        assert!(Arc::ptr_eq(&first, &second), "the second window shares the first project");
+
+        // Closing one window leaves the other editing the same project.
+        host.close_project_detached("main");
+        host.wait_detached_closes();
+        assert!(host.project("main").is_err());
+        assert!(Arc::ptr_eq(&host.project("project-1").unwrap(), &first), "still alive for the other window");
+
+        // The last window to close does shut it down.
+        host.close_project("project-1");
+        assert!(host.project("project-1").is_err());
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn detached_close_releases_the_project_before_a_reopen() {

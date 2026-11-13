@@ -1,9 +1,9 @@
 //! A tree/list detail-provider fixture for host and native UI verification.
 use std::collections::BTreeMap;
 
-use openidea_plugin::details::{Details, Pane, Tab};
-use openidea_plugin::views::{Body, Button, ListItem, TreeItem, View, ViewEvent, Viewport, Views};
-use openidea_plugin::{Error, Invocation, Plugin, host, register_plugin};
+use pyforge_plugin::details::{Details, Pane, Tab};
+use pyforge_plugin::views::{Body, Button, ListItem, TreeItem, View, ViewEvent, Viewport, Views};
+use pyforge_plugin::{Error, Invocation, Plugin, host, register_plugin};
 
 #[derive(Default)]
 struct DetailViews {

@@ -1434,7 +1434,7 @@ async fn a_plugin_language_runs_its_debug_adapter_from_the_approved_program() {
     use ide_language::plugin_point::{PluginLanguages, parse_definition};
     use std::os::unix::fs::PermissionsExt;
 
-    let dir = std::env::temp_dir().join(format!("openidea-plugin-dap-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("pyforge-plugin-dap-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // Stands in for `godot --headless --editor …`.
     let program = dir.join("godot");

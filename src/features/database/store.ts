@@ -55,8 +55,8 @@ import { tx } from "@/platform/i18n";
 
 export const DB_TOOL_WINDOW = "database";
 export const RESULTS_VIEW = "dbResults";
-const BINDINGS_KEY = "openidea.database.consoles";
-const CONSOLE_SCHEMAS_KEY = "openidea.database.consoleSchemas";
+const BINDINGS_KEY = "pyforge.database.consoles";
+const CONSOLE_SCHEMAS_KEY = "pyforge.database.consoleSchemas";
 const MAX_TABS = 12;
 
 export interface ResultTab {

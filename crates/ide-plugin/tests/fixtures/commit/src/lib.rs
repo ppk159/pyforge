@@ -1,5 +1,5 @@
-use openidea_plugin::commit::{CommitChecks, CommitProblem};
-use openidea_plugin::{CommitDraft, Error, Invocation, Location, Plugin, Position, Range, host, register_plugin};
+use pyforge_plugin::commit::{CommitChecks, CommitProblem};
+use pyforge_plugin::{CommitDraft, Error, Invocation, Location, Plugin, Position, Range, host, register_plugin};
 
 #[derive(Default)]
 struct Fixture;

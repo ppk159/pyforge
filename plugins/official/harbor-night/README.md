@@ -2,7 +2,7 @@
 
 An OpenIDEA theme plugin, **Harbor Night**: a dark theme with slate surfaces, a
 teal accent and a warm syntax palette. It is also where new themes start:
-`openidea-plugin new --template theme` copies its theme files, or copy this
+`pyforge-plugin new --template theme` copies its theme files, or copy this
 folder. Full documentation, the token reference and porting guides are in
 [`docs/plugins/themes.md`](../../../docs/plugins/themes.md).
 
@@ -18,7 +18,7 @@ A theme plugin is data only: no code, no WebAssembly, no build step.
 
 ## Make your own
 
-1. Run `openidea-plugin new --template theme`, or copy the folder, for
+1. Run `pyforge-plugin new --template theme`, or copy the folder, for
    example to `~/openidea-themes/my-theme`.
 2. In `plugin.toml`, change `id` (lowercase, `a-z 0-9 - _ .`), `name`,
    `description`, `authors` and the two paths.
@@ -44,7 +44,7 @@ or a zip that users extract.
 
 ## Iterate
 
-Put (or symlink) the folder in `<project>/.openidea/plugins/` of an open
+Put (or symlink) the folder in `<project>/.pyforge/plugins/` of an open
 project. It loads as a _dev_ plugin, and **Reload** in Settings › Plugins (or
 the _Reload Plugins_ action) re-reads your edits without reinstalling. Invalid
 JSON or values are reported in Settings › Plugins with the file and line.

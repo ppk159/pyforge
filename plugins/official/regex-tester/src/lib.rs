@@ -4,9 +4,9 @@
 //! the matches back, in UTF-16 offsets the page can highlight. *Use Selection*
 //! takes the focused editor's selection as the text.
 
-use openidea_plugin::host;
-use openidea_plugin::views::{Body, Button, View, ViewEvent, Viewport, Views};
-use openidea_plugin::{Error, Invocation, Plugin, register_plugin};
+use pyforge_plugin::host;
+use pyforge_plugin::views::{Body, Button, View, ViewEvent, Viewport, Views};
+use pyforge_plugin::{Error, Invocation, Plugin, register_plugin};
 use regex::RegexBuilder;
 use serde_json::{Value, json};
 
@@ -198,7 +198,7 @@ register_plugin!(RegexTester, views);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
 
     fn run(pattern: &str, flags: &str, text: &str, replace: Option<&str>) -> Value {
         evaluate(&Run {

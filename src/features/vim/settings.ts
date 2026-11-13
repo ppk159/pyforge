@@ -13,7 +13,7 @@ export interface VimSettings {
   handlers: Record<string, Handler>;
 }
 
-export const VIM_SETTINGS_KEY = "openidea.vim.v1";
+export const VIM_SETTINGS_KEY = "pyforge.vim.v1";
 
 export const DEFAULT_VIM_SETTINGS: VimSettings = { enabled: false, handlers: {} };
 

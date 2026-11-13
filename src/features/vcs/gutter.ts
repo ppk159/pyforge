@@ -217,7 +217,7 @@ function scrollMarks(state: EditorState): ScrollbarMark[] {
 }
 
 const laneTheme = EditorView.baseTheme({
-  ".cm-openidea-lane .cm-gutterElement:has(.cm-openidea-laneBar, .cm-openidea-laneDeleted)": { cursor: "pointer" },
+  ".cm-pyforge-lane .cm-gutterElement:has(.cm-pyforge-laneBar, .cm-pyforge-laneDeleted)": { cursor: "pointer" },
 });
 
 /**
@@ -227,7 +227,7 @@ const laneTheme = EditorView.baseTheme({
  */
 export function laneMouseDown(view: EditorView, event: MouseEvent, path: string): boolean {
   if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
-  const lane = view.dom.querySelector(".cm-openidea-lane");
+  const lane = view.dom.querySelector(".cm-pyforge-lane");
   if (!lane) return false;
   const rect = lane.getBoundingClientRect();
   if (event.clientX < rect.left - 1 || event.clientX > rect.right + 3) return false;

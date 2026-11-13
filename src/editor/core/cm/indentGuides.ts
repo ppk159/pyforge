@@ -12,9 +12,9 @@ import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate
 import { getIndentUnit } from "@codemirror/language";
 
 /**
- * Values of `--openidea-guide-images` / `--openidea-guide-positions` for an
+ * Values of `--pyforge-guide-images` / `--pyforge-guide-positions` for an
  * indentation `levels` deep (in units of `step` columns), or null when it has
- * no guides. `.cm-openidea-guides` lines and code lens rows turn them into
+ * no guides. `.cm-pyforge-guides` lines and code lens rows turn them into
  * backgrounds (theme.ts).
  */
 export function guideVars(levels: number, step: number): { images: string; positions: string } | null {
@@ -22,7 +22,7 @@ export function guideVars(levels: number, step: number): { images: string; posit
   const images: string[] = [];
   const positions: string[] = [];
   for (let level = 1; level < levels; level++) {
-    images.push("var(--openidea-guide)");
+    images.push("var(--pyforge-guide)");
     positions.push(`calc(6px + ${level * step}ch) 0`);
   }
   return { images: images.join(", "), positions: positions.join(", ") };
@@ -34,8 +34,8 @@ function guideDeco(levels: number, step: number) {
   let d = cache.get(key);
   if (d === undefined) {
     const vars = guideVars(levels, step);
-    const style = vars && `--openidea-guide-images: ${vars.images}; --openidea-guide-positions: ${vars.positions}`;
-    d = style ? Decoration.line({ attributes: { class: "cm-openidea-guides", style } }) : null;
+    const style = vars && `--pyforge-guide-images: ${vars.images}; --pyforge-guide-positions: ${vars.positions}`;
+    d = style ? Decoration.line({ attributes: { class: "cm-pyforge-guides", style } }) : null;
     cache.set(key, d);
   }
   return d;
@@ -103,5 +103,5 @@ export const indentGuides: Extension = [
     { decorations: (v) => v.decorations },
   ),
   // Lets code lens rows draw the guides too, only while guides are on.
-  EditorView.contentAttributes.of({ class: "cm-openidea-guidesOn" }),
+  EditorView.contentAttributes.of({ class: "cm-pyforge-guidesOn" }),
 ];

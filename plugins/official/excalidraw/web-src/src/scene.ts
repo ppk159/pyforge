@@ -79,7 +79,7 @@ export function parseScene(text: string): { scene: Scene } | { error: string } {
     { refreshDimensions: false, repairBindings: true },
   );
   // The page's own address (what Excalidraw writes here) is no source worth keeping.
-  const own = /^(openidea-plugin:|https?:\/\/openidea-plugin\.localhost)/;
+  const own = /^(pyforge-plugin:|https?:\/\/pyforge-plugin\.localhost)/;
   const source =
     typeof data.source === "string" && data.source.trim() && !own.test(data.source) ? data.source : undefined;
   return { scene: { elements: restored.elements, appState: restored.appState, files: restored.files ?? {}, source } };

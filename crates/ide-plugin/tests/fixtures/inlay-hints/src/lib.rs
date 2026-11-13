@@ -1,5 +1,5 @@
-use openidea_plugin::inlay_hints::{Document, InlayHint, InlayHints, InlayKind};
-use openidea_plugin::{Error, Invocation, Plugin, Range, register_plugin, text};
+use pyforge_plugin::inlay_hints::{Document, InlayHint, InlayHints, InlayKind};
+use pyforge_plugin::{Error, Invocation, Plugin, Range, register_plugin, text};
 
 #[derive(Default)]
 struct Fixture;

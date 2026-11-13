@@ -654,7 +654,7 @@ pub mod current {
     pub(super) fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
         CURRENT.with(|c| {
             let cur = c.borrow();
-            let state = cur.as_ref().expect("no mock host: call openidea_plugin::mock::MockHost::install() first");
+            let state = cur.as_ref().expect("no mock host: call pyforge_plugin::mock::MockHost::install() first");
             f(&mut state.borrow_mut())
         })
     }

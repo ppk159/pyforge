@@ -25,7 +25,7 @@ project = work / 'project'
 (project / 'src/zoo').mkdir(parents=True)
 (project / '.project').write_text('<projectDescription><name>zoo</name><buildSpec><buildCommand><name>org.eclipse.jdt.core.javabuilder</name></buildCommand></buildSpec><natures><nature>org.eclipse.jdt.core.javanature</nature></natures></projectDescription>')
 # `kotlin`: the project's compiled Kotlin classes, as the Kotlin bridge attaches them.
-(project / '.classpath').write_text('<classpath><classpathentry kind="src" path="src"/><classpathentry kind="lib" path="kotlin"><attributes><attribute name="ai.openidea.kotlin" value="true"/></attributes></classpathentry><classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/><classpathentry kind="output" path="bin"/></classpath>')
+(project / '.classpath').write_text('<classpath><classpathentry kind="src" path="src"/><classpathentry kind="lib" path="kotlin"><attributes><attribute name="ai.pyforge.kotlin" value="true"/></attributes></classpathentry><classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/><classpathentry kind="output" path="bin"/></classpath>')
 sources = {
     'Repo.java': '''package zoo;
 

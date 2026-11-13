@@ -4,7 +4,7 @@
 //! - **Package** (`<id>-<version>.oiplugin`): a zip of the manifest, the files
 //!   its declarations reference, the component and licence files, plus
 //!   [`SIGNATURE_FILE`] when signed.
-//! - **Signature**: Ed25519 over `openidea-plugin/1\n<id>\n<version>\n<digest>`,
+//! - **Signature**: Ed25519 over `pyforge-plugin/1\n<id>\n<version>\n<digest>`,
 //!   `digest` being [`package_digest`] of the unpacked files. A signature
 //!   proves who published the bytes; whether to trust that publisher is the
 //!   index's call.
@@ -47,7 +47,7 @@ pub fn package_digest(dir: &Path, files: &[PathBuf]) -> std::io::Result<String> 
 }
 
 fn signed_message(id: &str, version: &str, digest: &str) -> Vec<u8> {
-    format!("openidea-plugin/1\n{id}\n{version}\n{digest}").into_bytes()
+    format!("pyforge-plugin/1\n{id}\n{version}\n{digest}").into_bytes()
 }
 
 fn endorsement_message(publisher: &str, key: &str) -> Vec<u8> {
@@ -87,7 +87,7 @@ impl PublisherKey {
         Self(SigningKey::from_bytes(&seed))
     }
 
-    /// The seed as written by `openidea-plugin keygen`.
+    /// The seed as written by `pyforge-plugin keygen`.
     pub fn from_base64(text: &str) -> Result<Self, String> {
         let bytes = B64.decode(text.trim()).map_err(|e| format!("key file: {e}"))?;
         let seed: [u8; 32] = bytes.try_into().map_err(|_| "key file: expected a 32-byte key".to_owned())?;
@@ -341,7 +341,7 @@ pub struct IndexEntry {
     #[serde(default)]
     pub capabilities: Vec<String>,
     /// The plugin API versions it loads in (a semver requirement): its
-    /// manifest's `engines.openidea` and the API its component was built for.
+    /// manifest's `engines.pyforge` and the API its component was built for.
     /// Required: an entry without one is offered to no IDE.
     #[serde(default)]
     pub engine: String,
@@ -365,7 +365,7 @@ impl IndexEntry {
     }
 }
 
-/// `engines.openidea` of a manifest narrowed to the API its component was built
+/// `engines.pyforge` of a manifest narrowed to the API its component was built
 /// for (`major.minor`, if it has code): the requirement an index lists.
 pub fn engine_requirement(manifest_engine: &str, built_for: Option<&semver::Version>) -> String {
     match built_for {

@@ -67,11 +67,11 @@ describe("diff overview stripe (#1505)", () => {
   it("draws the aligned view's lane in the right pane over the shared scroller", () => {
     const mv = splitView([], diffOverview("aligned"));
     const lane = mv.b.dom.firstElementChild as HTMLElement;
-    expect(lane.classList.contains("cm-openidea-overview-sticky")).toBe(true);
-    expect(mv.dom.classList.contains("cm-openidea-overviewScroller")).toBe(true);
-    expect(mv.a.dom.querySelector(".cm-openidea-overview")).toBeNull();
+    expect(lane.classList.contains("cm-pyforge-overview-sticky")).toBe(true);
+    expect(mv.dom.classList.contains("cm-pyforge-overviewScroller")).toBe(true);
+    expect(mv.a.dom.querySelector(".cm-pyforge-overview")).toBeNull();
     mv.destroy();
-    expect(mv.dom.classList.contains("cm-openidea-overviewScroller")).toBe(false);
+    expect(mv.dom.classList.contains("cm-pyforge-overviewScroller")).toBe(false);
     merge = null;
   });
 });

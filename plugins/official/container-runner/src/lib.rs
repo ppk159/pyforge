@@ -1,5 +1,5 @@
 //! A fake executable makes the argv/cwd and terminal lifecycle easy to inspect.
-use openidea_plugin::{Error, Event, Invocation, Plugin, PluginRunTarget, StatusItem, host, register_plugin};
+use pyforge_plugin::{Error, Event, Invocation, Plugin, PluginRunTarget, StatusItem, host, register_plugin};
 const PROGRAM: &str = "openidea-example-wrapper";
 #[derive(Default)]
 pub struct ContainerRunner;
@@ -44,7 +44,7 @@ register_plugin!(ContainerRunner);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
     #[test]
     fn terminal_completion_updates_status_and_output() {
         let mock = MockHost::install().with_capabilities(&["project.read", "process:openidea-example-wrapper"]);

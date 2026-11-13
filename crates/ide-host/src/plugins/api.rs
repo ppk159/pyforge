@@ -3061,7 +3061,7 @@ mod tests {
 
     fn api(dir: &Path, pins: Arc<RwLock<HashMap<(String, String), ProgramPin>>>) -> PluginApi {
         let manifest = ide_extension::Manifest::parse(
-            "id = \"acme.lint\"\nname = \"Lint\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n",
+            "id = \"acme.lint\"\nname = \"Lint\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n",
         )
         .unwrap();
         let sink: Arc<dyn PluginEventSink> = Arc::new(|_: Option<&str>, _: PluginEvent| {});
@@ -3674,7 +3674,7 @@ mod workbench_tests {
     }
     fn api(root: &Path, trusted: bool, text: Option<&str>) -> PluginApi {
         let manifest = ide_extension::Manifest::parse(
-            "id = \"test\"\nname = \"Test\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.4\"\n",
+            "id = \"test\"\nname = \"Test\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.4\"\n",
         )
         .unwrap();
         let shared = Shared::new(

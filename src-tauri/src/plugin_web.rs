@@ -1,4 +1,4 @@
-//! The `openidea-plugin` URL scheme: files of plugins' web views
+//! The `pyforge-plugin` URL scheme: files of plugins' web views
 //! (`<plugin id>/<revision>/<path>`, see `ide_host::plugins::web`).
 //!
 //! Pages run in a sandboxed frame (an opaque origin), so every response allows
@@ -11,18 +11,18 @@ use crate::state::AppState;
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
-pub const SCHEME: &str = "openidea-plugin";
+pub const SCHEME: &str = "pyforge-plugin";
 
 /// What a page loaded from the scheme may do: its own files, nothing else.
 const HTML_CSP: &str = "sandbox allow-scripts; default-src 'none'; \
-    script-src openidea-plugin: http://openidea-plugin.localhost 'unsafe-inline' 'wasm-unsafe-eval'; \
-    style-src openidea-plugin: http://openidea-plugin.localhost 'unsafe-inline'; \
-    img-src openidea-plugin: http://openidea-plugin.localhost data: blob:; \
-    font-src openidea-plugin: http://openidea-plugin.localhost data:; \
-    media-src openidea-plugin: http://openidea-plugin.localhost data: blob:; \
-    connect-src openidea-plugin: http://openidea-plugin.localhost data: blob:";
+    script-src pyforge-plugin: http://pyforge-plugin.localhost 'unsafe-inline' 'wasm-unsafe-eval'; \
+    style-src pyforge-plugin: http://pyforge-plugin.localhost 'unsafe-inline'; \
+    img-src pyforge-plugin: http://pyforge-plugin.localhost data: blob:; \
+    font-src pyforge-plugin: http://pyforge-plugin.localhost data:; \
+    media-src pyforge-plugin: http://pyforge-plugin.localhost data: blob:; \
+    connect-src pyforge-plugin: http://pyforge-plugin.localhost data: blob:";
 
-/// `window.openidea` (one function expression taking the initial theme), the same
+/// `window.pyforge` (one function expression taking the initial theme), the same
 /// source the workbench inlines into rendered `html` bodies.
 const BRIDGE: &str = include_str!("../../src/features/plugins/views/frame-bridge.js");
 
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn the_bridge_is_the_first_script() {
         let out = String::from_utf8(with_bridge(b"<!doctype html><html><HEAD lang=x><script>app()</script>")).unwrap();
-        let bridge = out.find("window.openidea").unwrap();
+        let bridge = out.find("window.pyforge").unwrap();
         assert!(out.find("<HEAD lang=x>").unwrap() < bridge && bridge < out.find("app()").unwrap(), "{out}");
         assert!(out.contains("})(null);</script>"), "{out}");
         let bare = String::from_utf8(with_bridge(b"<p>x</p>")).unwrap();

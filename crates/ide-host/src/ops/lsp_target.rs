@@ -1,4 +1,4 @@
-//! Project language-server targets, shared by desktop and openidea-server.
+//! Project language-server targets, shared by desktop and pyforge-server.
 use crate::plugins::PluginHost;
 use ide_core::{IdeError, IdeResult};
 use ide_language::{LanguageServerConfig, ServerTarget};

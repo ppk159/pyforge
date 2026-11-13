@@ -1,5 +1,5 @@
-use openidea_plugin::hover::{Document, Hover, HoverProvider};
-use openidea_plugin::{Error, Invocation, Plugin, Position, Range, register_plugin, text};
+use pyforge_plugin::hover::{Document, Hover, HoverProvider};
+use pyforge_plugin::{Error, Invocation, Plugin, Position, Range, register_plugin, text};
 
 #[derive(Default)]
 struct Fixture;

@@ -12,7 +12,7 @@ import { Server, repoRoot } from "./server.ts";
 const options = { skip: process.platform === "win32", timeout: 30_000 };
 
 async function fixture(mode = "graceful") {
-  const home = mkdtempSync(join(tmpdir(), "openidea-server-close-"));
+  const home = mkdtempSync(join(tmpdir(), "pyforge-server-close-"));
   const previous = process.env.OPENIDEA_SERVER;
   process.env.OPENIDEA_SERVER = join(repoRoot, "smoke", "fixtures", "server.cjs");
   onTestFinished(async () => {

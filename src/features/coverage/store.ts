@@ -117,7 +117,7 @@ export interface ImportedReport {
   importedAt: number;
 }
 
-const IMPORTED_KEY = "openidea.coverage.imported.v1:";
+const IMPORTED_KEY = "pyforge.coverage.imported.v1:";
 const MAX_IMPORTED = 20;
 
 export function importedReports(root: string | null = useProject.getState().project?.root ?? null): ImportedReport[] {

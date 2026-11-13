@@ -1,5 +1,5 @@
 # A theme plugin is data only: no `wasm`, no capabilities, nothing to compile.
-# `openidea-plugin new --template theme` starts a new theme from this one.
+# `pyforge-plugin new --template theme` starts a new theme from this one.
 id = "openidea.harbor-night"
 name = "Harbor Night"
 version = "0.1.0"
@@ -7,7 +7,7 @@ description = "A dark theme: slate surfaces, a teal accent and a warm syntax pal
 authors = ["OpenIDEA contributors"]
 license = "Apache-2.0"
 change-notes = "1.0.0 — first release."
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 # One entry per theme. `editor-scheme` is optional: its tokens are merged over
 # the theme's (IntelliJ's .theme.json + .icls pair).

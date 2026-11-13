@@ -171,7 +171,7 @@ pub fn plugin_subscribe(window: Window, on_event: Channel<PluginEvent>) {
 }
 
 /// Installed and linked plugins plus the project plugins of this window's
-/// project (`<project>/.openidea/plugins/*`, rescanned on every call), with
+/// project (`<project>/.pyforge/plugins/*`, rescanned on every call), with
 /// the UI contributions to project.
 #[tauri::command]
 #[specta::specta]
@@ -235,7 +235,7 @@ pub async fn plugin_set_capability(
     blocking(move || host.set_capability(&id, &capability, granted)).await
 }
 
-/// Links a development plugin folder (`openidea-plugin link` does the same from a terminal).
+/// Links a development plugin folder (`pyforge-plugin link` does the same from a terminal).
 #[tauri::command]
 #[specta::specta]
 pub async fn plugin_link(state: State<'_, AppState>, path: PathBuf) -> IdeResult<PluginInfo> {

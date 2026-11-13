@@ -51,18 +51,23 @@ pub struct Launch {
     pub settings_page: Option<String>,
     /// Settings windows: edit the global layer only ("Settings for New Projects").
     pub new_projects: bool,
-    /// Where to place the caret in some of `files` (`openidea --line 12 --column 5 <file>`).
+    /// Where to place the caret in some of `files` (`pyforge --line 12 --column 5 <file>`).
     #[serde(default)]
     pub positions: Vec<FilePosition>,
     /// Comparison windows: the revisions to compare (boxed: most launches have none).
     #[serde(default)]
     pub comparison: Option<Box<ComparisonLaunch>>,
-    /// `openidea diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none).
+    /// `pyforge diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none).
     #[serde(default)]
     pub diff: Option<Box<DiffFilesLaunch>>,
     /// Deployment windows: the server and local selection to compare.
     #[serde(default)]
     pub deployment: Option<DeploymentLaunch>,
+    /// A tab pulled out of another window: the project is shared (same index, language
+    /// servers and documents), but the window presents itself as a single file — no
+    /// Project tree, no project name in the title.
+    #[serde(default)]
+    pub tab_window: bool,
 }
 
 /// Local files to compare with a deployment server (Sync with Deployed).
@@ -96,7 +101,7 @@ pub struct ComparisonLaunch {
     pub repo: Option<ide_core::IpcPath>,
 }
 
-/// The two files of a command-line diff (`openidea diff a.txt b.txt`), both sides editable.
+/// The two files of a command-line diff (`pyforge diff a.txt b.txt`), both sides editable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DiffFilesLaunch {
     pub left: ide_core::IpcPath,
@@ -394,7 +399,7 @@ pub fn cycle_target(sorted: &[String], current: &str, forward: bool) -> Option<S
 /// Flags followed by a value (`--line 12`).
 const VALUE_FLAGS: [&str; 2] = ["--line", "--column"];
 
-/// The subcommand opening two files side by side (`openidea diff a.txt b.txt`).
+/// The subcommand opening two files side by side (`pyforge diff a.txt b.txt`).
 const DIFF_ARG: &str = "diff";
 
 /// The project path from command-line arguments (`openidea /path/to/project`):
@@ -418,7 +423,7 @@ pub fn cli_path(args: &[String], cwd: &Path) -> Option<PathBuf> {
 /// What the command line asks to open (arguments after the binary, resolved against `cwd`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliLaunch {
-    /// `openidea diff a.txt b.txt`: the two files side by side in the diff viewer.
+    /// `pyforge diff a.txt b.txt`: the two files side by side in the diff viewer.
     Diff(DiffFilesLaunch),
     /// A project folder or a file (`openidea /path/to/project`).
     Path(PathBuf),
@@ -433,7 +438,7 @@ pub fn cli_launch(args: &[String], cwd: &Path) -> Option<CliLaunch> {
             }
             // One file is no pair: open it like any path.
             [one] => Some(CliLaunch::Path(one.clone())),
-            // `openidea diff` with no files: like starting without arguments.
+            // `pyforge diff` with no files: like starting without arguments.
             [] => None,
         };
     }
@@ -688,10 +693,29 @@ fn create_window_with(
     files: Vec<PathBuf>,
     restoring: bool,
 ) -> IdeResult<WebviewWindow> {
-    let title = project.as_deref().or(files.first().map(PathBuf::as_path)).and_then(Path::file_name);
+    create_window_with_flags(app, project, files, restoring, false)
+}
+
+/// [`create_window_with`] with the presentation: a `tab_window` shares its project but
+/// hides the Project tree and the project name in its title.
+fn create_window_with_flags(
+    app: &AppHandle,
+    project: Option<PathBuf>,
+    files: Vec<PathBuf>,
+    restoring: bool,
+    tab_window: bool,
+) -> IdeResult<WebviewWindow> {
+    // A tab window is titled after its file: the project is shared, not shown.
+    let named = if tab_window { files.first().map(PathBuf::as_path) } else { project.as_deref() };
+    let title = named.or(files.first().map(PathBuf::as_path)).and_then(Path::file_name);
     let title = title.map(|n| n.to_string_lossy().into_owned());
     let files = files.into_iter().map(Into::into).collect();
-    create_window_for(app, title, Launch { project: project.map(Into::into), files, ..Default::default() }, restoring)
+    create_window_for(
+        app,
+        title,
+        Launch { project: project.map(Into::into), files, tab_window, ..Default::default() },
+        restoring,
+    )
 }
 
 /// Restoring a saved group preserves its membership and selected tab.
@@ -814,7 +838,7 @@ pub fn open_project_window(
 /// detach an editor tab out of its window.
 pub fn open_file_in_new_window(app: &AppHandle, project: Option<PathBuf>, file: PathBuf) -> IdeResult<OpenOutcome> {
     tracing::info!("open_file_in_new_window {} project={:?}", file.display(), project);
-    let window = create_window_with(app, project, vec![file], false)?;
+    let window = create_window_with_flags(app, project, vec![file], false, true)?;
     Ok(OpenOutcome::Opened { label: window.label().to_owned() })
 }
 
@@ -1206,7 +1230,7 @@ pub fn open_targets(app: &AppHandle, targets: Vec<ide_cli::Target>) {
     open_paths(app, paths);
 }
 
-/// `openidea diff a.txt b.txt` while the app is running: hands the pair to the window the user is
+/// `pyforge diff a.txt b.txt` while the app is running: hands the pair to the window the user is
 /// looking at (a project window, never an auxiliary one), else opens a new window for it.
 pub(crate) fn open_diff_files(app: &AppHandle, diff: DiffFilesLaunch) {
     let launch = Launch { diff: Some(Box::new(diff)), ..Default::default() };

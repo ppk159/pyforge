@@ -1,6 +1,6 @@
 //! Deliberately tiny line-oriented fixture, not a language/framework plugin.
-use openidea_plugin::indexing::{Alias, Anchor, Document, DocumentIndexer, Edges};
-use openidea_plugin::{Error, Invocation, Plugin, Position, Range, register_plugin};
+use pyforge_plugin::indexing::{Alias, Anchor, Document, DocumentIndexer, Edges};
+use pyforge_plugin::{Error, Invocation, Plugin, Position, Range, register_plugin};
 
 #[derive(Default)]
 struct Indexer;

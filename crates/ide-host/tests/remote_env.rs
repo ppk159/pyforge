@@ -64,10 +64,10 @@ fn server_environment_from_login_shell_and_devcontainer() {
 
     // Two server starts: each reads the login shell again (not the cached PATH).
     write(&rc, "export OPENIDEA_RC_VAR=one\nexport PATH=/start-one/bin:/usr/bin:/bin\n");
-    ide_host::shell_env::inherit_login_shell_env("openidea-server-test");
+    ide_host::shell_env::inherit_login_shell_env("pyforge-server-test");
     assert_eq!(std::env::var("OPENIDEA_RC_VAR").unwrap(), "one");
     write(&rc, "export OPENIDEA_RC_VAR=two\nexport PATH=/start-two/bin:/usr/bin:/bin\n");
-    ide_host::shell_env::inherit_login_shell_env("openidea-server-test");
+    ide_host::shell_env::inherit_login_shell_env("pyforge-server-test");
     assert_eq!(std::env::var("OPENIDEA_RC_VAR").unwrap(), "two");
     assert!(std::env::var("PATH").unwrap().starts_with("/start-two/bin:"), "{:?}", std::env::var("PATH"));
     let base = tmp.join("server");

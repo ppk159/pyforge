@@ -17,7 +17,7 @@ my-theme/
    └─ my-theme.scheme.json        # editor colours, optional (IntelliJ: .icls)
 ```
 
-The quickest way to start is `openidea-plugin new --template theme`, or a copy of
+The quickest way to start is `pyforge-plugin new --template theme`, or a copy of
 [`plugins/official/harbor-night`](../../plugins/official/harbor-night).
 It contains *Harbor Night*, a complete example dark theme that sets every
 themeable token. The rest of this page covers the file format, the token
@@ -111,7 +111,7 @@ these tokens inherits its corresponding base tooltip tokens, including in light 
 
 There is no build step. The package *is* the folder.
 
-1. Run `openidea-plugin new --template theme` (or copy
+1. Run `pyforge-plugin new --template theme` (or copy
    `plugins/official/harbor-night`) and rename `id`, `name` and the theme files.
 2. Edit the colours. Keep `kind` truthful (`light` for light backgrounds).
 3. **Install:** *Settings › Plugins › ⚙ › Install Plugin from Disk…* (or the
@@ -123,7 +123,7 @@ There is no build step. The package *is* the folder.
    to the theme. *Use Default Theme* switches back.
 
 To iterate without reinstalling, put (or symlink) the package in
-`<project>/.openidea/plugins/<name>/` of an open project. It loads as a *dev*
+`<project>/.pyforge/plugins/<name>/` of an open project. It loads as a *dev*
 plugin, and *Reload* (or the *Reload Plugins* action) picks up your edits.
 
 To share a theme, publish the folder (a Git repository or a zip). Users

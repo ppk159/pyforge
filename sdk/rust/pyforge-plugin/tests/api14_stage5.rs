@@ -1,4 +1,4 @@
-use openidea_plugin::{Error, PluginDataSource, host, mock::MockHost};
+use pyforge_plugin::{Error, PluginDataSource, host, mock::MockHost};
 #[test]
 fn database_wrappers_are_owned_project_scoped_and_write_only() {
     let mock = MockHost::install().with_capabilities(&[]);

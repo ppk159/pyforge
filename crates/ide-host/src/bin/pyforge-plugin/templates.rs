@@ -1,4 +1,4 @@
-//! The files of `openidea-plugin new`. Placeholders: `__ID__` (plugin id),
+//! The files of `pyforge-plugin new`. Placeholders: `__ID__` (plugin id),
 //! `__SLUG__` (last id segment), `__NAME__`, `__CRATE__`, `__SDK__`.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub struct Vars<'a> {
 /// `(relative path, contents)` of every file of the template.
 pub fn render(template: Template, vars: &Vars) -> Vec<(String, String)> {
     let slug = vars.id.rsplit('.').next().unwrap_or(vars.id).to_owned();
-    let crate_name = format!("openidea-plugin-{}", vars.id.replace('.', "-"));
+    let crate_name = format!("pyforge-plugin-{}", vars.id.replace('.', "-"));
     let fill = |s: &str| {
         s.replace("__ID__", vars.id)
             .replace("__SLUG__", &slug)
@@ -86,8 +86,8 @@ authors = []
 # Marketplace categories (up to 3): languages, themes, icon-themes, linters,
 # vcs, ai, frameworks, tools, other.
 categories = ["tools"]
-engines.openidea = "^1.0"
-# Built by `openidea-plugin build`. The code is loaded the first time one of
+engines.pyforge = "^1.0"
+# Built by `pyforge-plugin build`. The code is loaded the first time one of
 # its commands runs; the commands below show in Find Action before that.
 wasm = "dist/plugin.wasm"
 
@@ -119,7 +119,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-openidea-plugin = __SDK__
+pyforge-plugin = __SDK__
 
 [profile.release]
 opt-level = "s"
@@ -131,7 +131,7 @@ panic = "abort"
 
 const COMMAND_LIB: &str = r#"//! __NAME__: an OpenIDEA plugin.
 
-use openidea_plugin::{Error, Invocation, NotificationLevel, Plugin, host, register_plugin};
+use pyforge_plugin::{Error, Invocation, NotificationLevel, Plugin, host, register_plugin};
 
 #[derive(Default)]
 pub struct Main {
@@ -164,7 +164,7 @@ register_plugin!(Main);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
 
     #[test]
     fn says_hello() {
@@ -191,13 +191,13 @@ An OpenIDEA plugin.
 
 ```sh
 cargo test                       # logic, against the SDK's mock host
-openidea-plugin build            # → dist/plugin.wasm, validated like an install
-openidea-plugin link             # load this folder in the IDE (Settings › Plugins)
+pyforge-plugin build            # → dist/plugin.wasm, validated like an install
+pyforge-plugin link             # load this folder in the IDE (Settings › Plugins)
 ```
 
 `plugin.toml` declares the commands, so they appear in Find Action before the
 code is loaded, and the capabilities the code needs. `src/lib.rs` implements
-them with the `openidea-plugin` SDK.
+them with the `pyforge-plugin` SDK.
 "#;
 
 const THEME_MANIFEST: &str = r#"id = "__ID__"
@@ -205,7 +205,7 @@ name = "__NAME__"
 version = "0.1.0"
 description = "A dark theme."
 authors = []
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 # One entry per theme. `editor-scheme` is optional: its tokens are merged over
 # the theme's (IntelliJ's .theme.json + .icls pair). Reference: docs/plugins/themes.md.
@@ -222,7 +222,7 @@ name = "__NAME__"
 version = "0.1.0"
 description = "File and folder icons."
 authors = []
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 # Apply it in Settings › Plugins › __NAME__. SVGs are sanitised on install:
 # no scripts, event handlers, external references or entities.
@@ -265,7 +265,7 @@ name = "__NAME__"
 version = "0.1.0"
 description = "Language support for .__SLUG__ files: detection, comments and indentation."
 authors = []
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 # Same format as languages/<id>.toml in the IDE repository.
 [[contributes.languages]]

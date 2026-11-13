@@ -91,7 +91,7 @@ export function uvicornTarget(params: Readonly<Record<string, string>>): string 
 export const fastapiType: RunConfigTypeContribution = {
   id: "fastapi",
   label: "FastAPI Server",
-  icon: "file-python",
+  icon: "fastapi",
   group: "Servers",
   description: "Run an ASGI application with uvicorn",
   defaults: { ...pythonPathDefaults },

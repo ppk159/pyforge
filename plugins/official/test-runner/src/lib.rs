@@ -1,6 +1,6 @@
 //! Lines beginning `test ` get a gutter button; the executable accepts the name as a filter.
-use openidea_plugin::language_features::{Document, GutterAction, LanguageFeatures};
-use openidea_plugin::{
+use pyforge_plugin::language_features::{Document, GutterAction, LanguageFeatures};
+use pyforge_plugin::{
     Error, Invocation, Plugin, PluginRunConfiguration, PluginTestEvent, RunConfigurations, TestFailed, TestPassed,
     TestResults, TestStart, host, register_plugin,
 };
@@ -90,7 +90,7 @@ register_plugin!(TestRunner, run_configurations, test_results, language_features
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
     #[test]
     fn filters_reach_runs_and_split_output_builds_the_test_tree() {
         let mock = MockHost::install().with_capabilities(&["process:openidea-example-tests"]);

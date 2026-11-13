@@ -192,7 +192,7 @@ fn misbehave_with(dir: &Path, name: &str, capability: &str) -> PathBuf {
     let required = format!("required = [\"project.read\", \"{capability}\"]");
     let text = text
         .replace("required = [\"project.read\"]", &required)
-        .replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"");
+        .replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"");
     std::fs::write(&manifest, text).unwrap();
     pkg
 }
@@ -215,7 +215,7 @@ fn write_theme_pair(dir: &Path) {
     std::fs::create_dir_all(dir.join("t")).unwrap();
     std::fs::write(
         dir.join("plugin.toml"),
-        "id = \"theme-pair\"\nname = \"Pair\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"theme-pair\"\nname = \"Pair\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
          [[contributes.themes]]\npath = \"t/day.json\"\n[[contributes.themes]]\npath = \"t/night.json\"\n",
     )
     .unwrap();
@@ -264,7 +264,7 @@ fn hello_02(text: &str, required: &str) -> String {
 fn hello_01(text: &str) -> String {
     // A Windows checkout may have CRLF line ends.
     text.replace("\r\n", "\n")
-        .replace("engines.openidea = \"^1.0\"", "openidea-api = \"0.1\"")
+        .replace("engines.pyforge = \"^1.0\"", "openidea-api = \"0.1\"")
         .replace("activation = [\"on-command:*\", \"on-view:greetings\"]\n", "")
         .replace(
             "[capabilities]\nrequired = [\"editor.read\", \"editor.write\"]",
@@ -510,13 +510,13 @@ fn project_write_stays_inside_the_project() {
     let f = fixture(Limits::default());
     f.install(&misbehave_with(f._tmp.path(), "misbehave-project-writer", "project.write"));
 
-    // A Run configuration: neither the file nor `.openidea/` exists yet.
-    assert_eq!(f.run("misbehave", "projwrite", Some(".openidea/run.toml")).unwrap(), None);
-    let conf = f.project.join(".openidea").join("run.toml");
+    // A Run configuration: neither the file nor `.pyforge/` exists yet.
+    assert_eq!(f.run("misbehave", "projwrite", Some(".pyforge/run.toml")).unwrap(), None);
+    let conf = f.project.join(".pyforge").join("run.toml");
     assert_eq!(std::fs::read_to_string(&conf).unwrap(), "written inside the project\n");
     // What it wrote reads back through the project.
     assert_eq!(
-        f.run("misbehave", "read", Some(".openidea/run.toml")).unwrap().as_deref(),
+        f.run("misbehave", "read", Some(".pyforge/run.toml")).unwrap().as_deref(),
         Some("written inside the project\n")
     );
     // An absolute path inside the root lands in the same place.
@@ -1322,7 +1322,7 @@ fn misbehave_with_language(dir: &Path) -> PathBuf {
     copy_dir(&misbehave_pkg(), &pkg);
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"misbehave\"\nname = \"Misbehave\"\nversion = \"0.0.1\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"misbehave\"\nname = \"Misbehave\"\nversion = \"0.0.1\"\nengines.pyforge = \"^1.0\"\n\
          wasm = \"dist/plugin.wasm\"\nactivation = [\"on-language:mis\"]\n\
          [[contributes.languages]]\npath = \"mis.toml\"\n",
     )
@@ -1403,7 +1403,7 @@ fn providers_of_several_plugins_run_concurrently() {
         std::fs::write(
             pkg.join("plugin.toml"),
             format!(
-                "id = \"{id}\"\nname = \"{id}\"\nversion = \"0.0.1\"\nengines.openidea = \"^1.0\"\n\
+                "id = \"{id}\"\nname = \"{id}\"\nversion = \"0.0.1\"\nengines.pyforge = \"^1.0\"\n\
                  wasm = \"dist/plugin.wasm\"\nactivation = [\"on-language:text\"]\n\
                  [[contributes.providers]]\nkinds = [\"completion\"]\nlanguages = [\"text\"]\n"
             ),
@@ -1564,7 +1564,7 @@ fn theme_with_broken_editor_scheme_is_rejected() {
     std::fs::create_dir(dir.path().join("t")).unwrap();
     std::fs::write(
         dir.path().join("plugin.toml"),
-        "id = \"bad-scheme\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"bad-scheme\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
          [[contributes.themes]]\npath = \"t/a.json\"\neditor-scheme = \"t/a.scheme.json\"\n",
     )
     .unwrap();
@@ -1972,7 +1972,7 @@ fn run_detectors_offer_granted_commands_in_marked_projects() {
     std::fs::create_dir(&pkg).unwrap();
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"acme.forge\"\nname = \"Forge\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"acme.forge\"\nname = \"Forge\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
          [[contributes.runDetectors]]\nid = \"test\"\nname = \"forge test\"\nfiles = [\"foundry.toml\"]\n\
          command = \"forge\"\nargs = [\"test\"]\ntest = true\n",
     )
@@ -2055,7 +2055,7 @@ fn install_validation_atomic_replace_and_uninstall() {
     std::fs::create_dir_all(&pkg).unwrap();
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"b\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\nwasm = \"x.wasm\"",
+        "id = \"b\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\nwasm = \"x.wasm\"",
     )
     .unwrap();
     let install = |p: &Path| f.host.install_from_dir(p, &Consent::all());
@@ -2128,7 +2128,7 @@ fn icon_themes_are_a_contribution_type_like_any_other() {
     .unwrap();
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"acme.icons\"\nname = \"Icons\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"acme.icons\"\nname = \"Icons\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
          [[contributes.iconThemes]]\nid = \"acme\"\nlabel = \"Acme Icons\"\npath = \"theme.json\"\n",
     )
     .unwrap();
@@ -2191,7 +2191,7 @@ fn thousands_of_icons_install_and_reload_within_budget() {
     std::fs::write(pkg.join("theme.json"), theme.to_string()).unwrap();
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"acme.many\"\nname = \"Many\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+        "id = \"acme.many\"\nname = \"Many\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
          [[contributes.iconThemes]]\nid = \"many\"\nlabel = \"Many\"\npath = \"theme.json\"\n",
     )
     .unwrap();
@@ -2258,7 +2258,7 @@ fn catalog_lists_sample_packages() {
     std::fs::create_dir_all(&broken).unwrap();
     std::fs::write(
         broken.join("plugin.toml"),
-        "id = \"x\"\nname = \"X\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\nwasm = \"dist/plugin.wasm\"\n",
+        "id = \"x\"\nname = \"X\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\nwasm = \"dist/plugin.wasm\"\n",
     )
     .unwrap();
     std::fs::create_dir_all(tmp.path().join("junk")).unwrap();
@@ -2807,7 +2807,7 @@ fn official_csv_editor_edits_the_shared_document() {
 fn context_menu_entries_can_name_a_submenu() {
     fn with_menu(version: &'static str, extra: &'static str) -> impl Fn(&str) -> String {
         move |m: &str| {
-            let m = m.replace("engines.openidea = \"^1.0\"", &format!("engines.openidea = \"{version}\""));
+            let m = m.replace("engines.pyforge = \"^1.0\"", &format!("engines.pyforge = \"{version}\""));
             format!("{m}\n[[contributes.menus]]\ncommand = \"word-count\"\n{extra}\n")
         }
     }
@@ -2836,7 +2836,7 @@ fn context_menu_entries_can_name_a_submenu() {
 fn view_item_menus_name_a_declared_view() {
     /// The menu is new in API 1.2.
     fn api_1_2(m: &str) -> String {
-        m.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.2\"")
+        m.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.2\"")
     }
     fn with_menu(extra: &str) -> impl Fn(&str) -> String + '_ {
         move |m: &str| format!("{}\n[[contributes.menus]]\ncommand = \"word-count\"\n{extra}\n", api_1_2(m))
@@ -2908,7 +2908,7 @@ fn conditional_and_grouped_views_need_api_1_3() {
     let f = fixture(Limits::default());
     let tmp = tempfile::tempdir().unwrap();
     let pkg = hello_variant(tmp.path(), |m| {
-        m.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"").replace(
+        m.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"").replace(
             "location = \"right\"",
             "location = \"right\"\ngroup = \"spring\"\nwhen = \"workspaceContains:pom.xml || plugin.hello.ready\"",
         )
@@ -2967,7 +2967,7 @@ fn view_conditions_and_group_ids_are_validated() {
         let f = fixture(Limits::default());
         let tmp = tempfile::tempdir().unwrap();
         let pkg = hello_variant(tmp.path(), |m| {
-            m.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"")
+            m.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"")
                 .replace("location = \"right\"", &format!("location = \"right\"\n{field}"))
         });
         let err = f.host.install_from_dir(&pkg, &Consent::all()).unwrap_err();
@@ -3385,7 +3385,7 @@ fn views_can_use_an_svg_icon_from_the_package() {
                 r#"id = "panel-icon"
 name = "Panel Icon"
 version = "1.0.0"
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 [[contributes.views]]
 id = "panel"
@@ -3426,7 +3426,7 @@ fn a_package_ships_translations_in_locales() {
         std::fs::write(
             pkg.join("plugin.toml"),
             format!(
-                "id = \"{id}\"\nname = \"Words\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\n\
+                "id = \"{id}\"\nname = \"Words\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\n\
                  [[contributes.commands]]\nid = \"count\"\ntitle = \"Count Words\"\n"
             ),
         )
@@ -3481,7 +3481,7 @@ fn web_views_serve_only_their_own_files() {
         r#"id = "web-demo"
 name = "Web Demo"
 version = "1.0.0"
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 [capabilities]
 optional = ["clipboard"]
@@ -3583,7 +3583,7 @@ fn file_templates_api_13_names_and_variables() {
                 r#"id = "template-demo"
 name = "Templates"
 version = "1.0.0"
-engines.openidea = "{api}"
+engines.pyforge = "{api}"
 [[contributes.fileTemplates]]
 id = "template"
 name = "Template"
@@ -3638,7 +3638,7 @@ fn web_view_declarations_are_checked() {
     let manifest = |decl: &str| {
         std::fs::write(
             pkg.join("plugin.toml"),
-            format!("id = \"bad-web\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n{decl}"),
+            format!("id = \"bad-web\"\nname = \"B\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n{decl}"),
         )
         .unwrap();
         f.host.install_from_dir(&pkg, &Consent::all()).unwrap_err().message
@@ -3830,7 +3830,7 @@ fn a_generated_package_is_staged_for_the_install_page() {
     let manifest = r#"id = "intellij.deep-sea"
 name = "Deep Sea"
 version = "2.3.0"
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 
 [[contributes.themes]]
 path = "themes/deep-sea.theme.json"
@@ -4166,7 +4166,7 @@ fn file_action_resolution_can_ask_before_returning_resource_operations() {
 /// `hello` as a services view, which needs API 1.3.
 fn services_variant(text: &str) -> String {
     text.replace("location = \"right\"", "location = \"services\"")
-        .replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"")
+        .replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"")
 }
 
 #[test]
@@ -4230,7 +4230,7 @@ fn detail_views_work_in_every_location_and_require_api_1_3_code() {
         let f = fixture(Limits::default());
         let tmp = tempfile::tempdir().unwrap();
         let pkg = hello_variant(tmp.path(), |t| {
-            t.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"")
+            t.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"")
                 .replace("location = \"right\"", &format!("location = {location:?}\ndetail = true"))
         });
         assert!(f.install(&pkg).error.is_none());
@@ -4245,7 +4245,7 @@ fn detail_views_work_in_every_location_and_require_api_1_3_code() {
         let f = fixture(Limits::default());
         let tmp = tempfile::tempdir().unwrap();
         let pkg = hello_variant(tmp.path(), |t| {
-            t.replace("engines.openidea = \"^1.0\"", &format!("engines.openidea = {api:?}")).replace(
+            t.replace("engines.pyforge = \"^1.0\"", &format!("engines.pyforge = {api:?}")).replace(
                 "location = \"right\"",
                 if web {
                     "location = \"right\"\ndetail = true\nweb = \"web/index.html\""
@@ -4573,7 +4573,7 @@ fn icon_package(dir: &Path, id: &str, extra: &str, files: &[(&str, &str)]) -> Pa
     std::fs::create_dir_all(&pkg).unwrap();
     std::fs::write(
         pkg.join("plugin.toml"),
-        format!("id = \"{id}\"\nname = \"Iconic\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.2\"\n{extra}"),
+        format!("id = \"{id}\"\nname = \"Iconic\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.2\"\n{extra}"),
     )
     .unwrap();
     for (name, text) in files {
@@ -5265,7 +5265,7 @@ fn marker_icons_ship_sanitized_light_and_dark_assets() {
 id = "marker-icons"
 name = "Marker Icons"
 version = "1.0.0"
-engines.openidea = "{engine}"
+engines.pyforge = "{engine}"
 [[contributes.markerIcons]]
 id = "resource"
 icon = "{icon}"
@@ -5349,7 +5349,7 @@ fn marker_icons_validate_indexed_marker_prefixes_and_tooltips() {
 id = "indexed-marker-icons"
 name = "Indexed Marker Icons"
 version = "1.0.0"
-engines.openidea = "{engine}"
+engines.pyforge = "{engine}"
 [[contributes.markerIcons]]
 id = "usages"
 icon = "icons/usages.svg"
@@ -5597,7 +5597,7 @@ fn view_header_none_needs_api_1_3_and_an_ungrouped_web_view() {
     std::fs::write(pkg.join("web/index.html"), "<!doctype html><p>hi</p>").unwrap();
     let manifest = |engine: &str, view_fields: &str| {
         format!(
-            "id = \"headerless\"\nname = \"Headerless\"\nversion = \"1.0.0\"\nengines.openidea = \"{engine}\"\n[[contributes.views]]\nid = \"panel\"\ntitle = \"Panel\"\nlocation = \"bottom\"\n{view_fields}\n"
+            "id = \"headerless\"\nname = \"Headerless\"\nversion = \"1.0.0\"\nengines.pyforge = \"{engine}\"\n[[contributes.views]]\nid = \"panel\"\ntitle = \"Panel\"\nlocation = \"bottom\"\n{view_fields}\n"
         )
     };
     for (engine, fields, expected) in [
@@ -5621,7 +5621,7 @@ fn view_header_none_needs_api_1_3_and_an_ungrouped_web_view() {
 
     std::fs::write(
         pkg.join("plugin.toml"),
-        "id = \"headerless\"\nname = \"Headerless\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.3\"\n[[contributes.views]]\nid = \"panel\"\ntitle = \"Panel\"\nlocation = \"right\"\nsecondary = true\nweb = \"web/index.html\"\nheader = \"none\"\n",
+        "id = \"headerless\"\nname = \"Headerless\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.3\"\n[[contributes.views]]\nid = \"panel\"\ntitle = \"Panel\"\nlocation = \"right\"\nsecondary = true\nweb = \"web/index.html\"\nheader = \"none\"\n",
     )
     .unwrap();
     let info = f.install(&pkg);
@@ -5636,7 +5636,7 @@ fn view_secondary_requires_api_1_3_and_a_boolean_tool_window_placement() {
         for fields in ["", "secondary = false", "secondary = true", "group = \"g\"\nsecondary = true"] {
             let tmp = tempfile::tempdir().unwrap();
             let pkg = hello_variant(tmp.path(), |t| {
-                t.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.3\"")
+                t.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.3\"")
                     .replace("location = \"right\"", &format!("location = {location:?}\n{fields}"))
             });
             assert!(f.install(&pkg).error.is_none());
@@ -5656,7 +5656,7 @@ fn view_secondary_requires_api_1_3_and_a_boolean_tool_window_placement() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         let pkg = hello_variant(tmp.path(), |t| {
-            t.replace("engines.openidea = \"^1.0\"", &format!("engines.openidea = {api:?}"))
+            t.replace("engines.pyforge = \"^1.0\"", &format!("engines.pyforge = {api:?}"))
                 .replace("location = \"right\"", &format!("location = {location:?}\nsecondary = {value}"))
         });
         let err = f.host.install_from_dir(&pkg, &Consent::all()).unwrap_err();

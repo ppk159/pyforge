@@ -81,11 +81,11 @@ fn the_sdk_carries_the_hosts_wit() {
         files
     };
     let host = read(repo().join("wit"));
-    let sdk = read(repo().join("sdk/rust/openidea-plugin/wit"));
+    let sdk = read(repo().join("sdk/rust/pyforge-plugin/wit"));
     let names = |f: &[(String, String)]| f.iter().map(|(n, _)| n.clone()).collect::<Vec<_>>();
-    assert_eq!(names(&sdk), names(&host), "sdk/rust/openidea-plugin/wit has other files than wit/");
+    assert_eq!(names(&sdk), names(&host), "sdk/rust/pyforge-plugin/wit has other files than wit/");
     for ((name, a), (_, b)) in host.iter().zip(&sdk) {
-        assert!(a == b, "sdk/rust/openidea-plugin/wit/{name} differs from wit/{name}: copy wit/ into the SDK");
+        assert!(a == b, "sdk/rust/pyforge-plugin/wit/{name} differs from wit/{name}: copy wit/ into the SDK");
     }
 }
 

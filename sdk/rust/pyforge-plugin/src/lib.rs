@@ -1,7 +1,7 @@
 //! SDK for OpenIDEA plugins written in Rust (plugin API 1.0).
 //!
 //! ```ignore
-//! use openidea_plugin::{Error, Invocation, Plugin, register_plugin};
+//! use pyforge_plugin::{Error, Invocation, Plugin, register_plugin};
 //!
 //! #[derive(Default)]
 //! struct Shout;
@@ -27,7 +27,7 @@
 //! [`mock`] host, so plugin logic is tested with plain `cargo test`:
 //!
 //! ```ignore
-//! let host = openidea_plugin::mock::MockHost::install();
+//! let host = pyforge_plugin::mock::MockHost::install();
 //! host.open_editor("/project/a.txt", "rust", "hi there", &[(0, 0, 0, 2)]);
 //! Shout.run_command("shout", &host.invocation(), None).unwrap();
 //! assert_eq!(host.editor_text(), "HI there");
@@ -36,7 +36,7 @@
 //! Instance memory is a cache: the instance is dropped after a crash or when
 //! idle. Keep what must survive in [`host::storage`].
 //!
-//! Build with `openidea-plugin build` (or `cargo build --release --target
+//! Build with `pyforge-plugin build` (or `cargo build --release --target
 //! wasm32-wasip2`); see `plugins/README.md`.
 
 pub mod commit;
@@ -68,7 +68,7 @@ pub mod bindings {
         path: "wit",
         pub_export_macro: true,
         export_macro_name: "__export_plugin_world",
-        default_bindings_module: "openidea_plugin::bindings",
+        default_bindings_module: "pyforge_plugin::bindings",
     });
 }
 
@@ -82,7 +82,7 @@ pub mod syntax_bindings {
         path: "wit",
         pub_export_macro: true,
         export_macro_name: "__export_syntax_world",
-        default_bindings_module: "openidea_plugin::syntax_bindings",
+        default_bindings_module: "pyforge_plugin::syntax_bindings",
     });
 }
 
@@ -96,7 +96,7 @@ pub mod providers_bindings {
         path: "wit",
         pub_export_macro: true,
         export_macro_name: "__export_editor_providers_world",
-        default_bindings_module: "openidea_plugin::providers_bindings",
+        default_bindings_module: "pyforge_plugin::providers_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
         },
@@ -113,7 +113,7 @@ pub mod views_bindings {
         path: "wit",
         pub_export_macro: true,
         export_macro_name: "__export_views_world",
-        default_bindings_module: "openidea_plugin::views_bindings",
+        default_bindings_module: "pyforge_plugin::views_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/workspace@1.4.0": crate::bindings::openidea::plugin::workspace,
@@ -129,7 +129,7 @@ pub mod indexing_bindings {
     wit_bindgen::generate!({
         world: "indexing", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_indexing_world",
-        default_bindings_module: "openidea_plugin::indexing_bindings",
+        default_bindings_module: "pyforge_plugin::indexing_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -140,7 +140,7 @@ pub mod details_bindings {
     wit_bindgen::generate!({
         world: "details", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_details_world",
-        default_bindings_module: "openidea_plugin::details_bindings",
+        default_bindings_module: "pyforge_plugin::details_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/workspace@1.4.0": crate::bindings::openidea::plugin::workspace,
@@ -156,7 +156,7 @@ pub mod semantic_bindings {
     wit_bindgen::generate!({
         world: "semantic-tokens", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_semantic_tokens_world",
-        default_bindings_module: "openidea_plugin::semantic_bindings",
+        default_bindings_module: "pyforge_plugin::semantic_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -167,7 +167,7 @@ pub mod diagnostics_bindings {
     wit_bindgen::generate!({
         world: "editor-diagnostics", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_diagnostics_world",
-        default_bindings_module: "openidea_plugin::diagnostics_bindings",
+        default_bindings_module: "pyforge_plugin::diagnostics_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/diagnostics@1.4.0": crate::bindings::openidea::plugin::diagnostics,
@@ -181,7 +181,7 @@ pub mod hover_bindings {
     wit_bindgen::generate!({
         world: "hover", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_hover_world",
-        default_bindings_module: "openidea_plugin::hover_bindings",
+        default_bindings_module: "pyforge_plugin::hover_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -192,7 +192,7 @@ pub mod commit_checks_bindings {
     wit_bindgen::generate!({
         world: "commit-checks", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_commit_checks_world",
-        default_bindings_module: "openidea_plugin::commit_checks_bindings",
+        default_bindings_module: "pyforge_plugin::commit_checks_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/workspace@1.4.0": crate::bindings::openidea::plugin::workspace,
@@ -209,7 +209,7 @@ pub mod inlay_bindings {
     wit_bindgen::generate!({
         world: "inlay-hints", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_inlay_hints_world",
-        default_bindings_module: "openidea_plugin::inlay_bindings",
+        default_bindings_module: "pyforge_plugin::inlay_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -220,7 +220,7 @@ pub mod file_actions_bindings {
     wit_bindgen::generate!({
         world: "file-actions-provider", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_file_actions_world",
-        default_bindings_module: "openidea_plugin::file_actions_bindings",
+        default_bindings_module: "pyforge_plugin::file_actions_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -231,7 +231,7 @@ pub mod endpoints_bindings {
     wit_bindgen::generate!({
         world: "endpoints", path: "wit", pub_export_macro: true,
         export_macro_name: "__export_endpoints_world",
-        default_bindings_module: "openidea_plugin::endpoints_bindings",
+        default_bindings_module: "pyforge_plugin::endpoints_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/workspace@1.4.0": crate::bindings::openidea::plugin::workspace,
@@ -1297,13 +1297,13 @@ pub use execution::*;
 #[doc(hidden)]
 pub mod run_configurations_bindings {
     wit_bindgen::generate!({ world: "configurations-provider", path: "wit", pub_export_macro: true,
-        export_macro_name: "__export_configurations_world", default_bindings_module: "openidea_plugin::run_configurations_bindings" });
+        export_macro_name: "__export_configurations_world", default_bindings_module: "pyforge_plugin::run_configurations_bindings" });
 }
 #[cfg(target_arch = "wasm32")]
 #[doc(hidden)]
 pub mod test_results_bindings {
     wit_bindgen::generate!({ world: "test-results-provider", path: "wit", pub_export_macro: true,
-        export_macro_name: "__export_tests_world", default_bindings_module: "openidea_plugin::test_results_bindings",
+        export_macro_name: "__export_tests_world", default_bindings_module: "pyforge_plugin::test_results_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -1341,7 +1341,7 @@ pub mod language_features;
 #[doc(hidden)]
 pub mod language_features_bindings {
     wit_bindgen::generate!({world: "editor-language-features", path: "wit", pub_export_macro: true,
-        export_macro_name: "__export_language_features_world", default_bindings_module: "openidea_plugin::language_features_bindings",
+        export_macro_name: "__export_language_features_world", default_bindings_module: "pyforge_plugin::language_features_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -1373,7 +1373,7 @@ fn gutter_actions(doc: $crate::language_features_bindings::exports::openidea::pl
 #[doc(hidden)]
 pub mod injections_bindings {
     wit_bindgen::generate!({world: "language-injections", path: "wit", pub_export_macro: true,
-        export_macro_name: "__export_injections_world", default_bindings_module: "openidea_plugin::injections_bindings",
+        export_macro_name: "__export_injections_world", default_bindings_module: "pyforge_plugin::injections_bindings",
         with: { "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types },
     });
 }
@@ -1402,7 +1402,7 @@ pub trait McpProvider {
 #[doc(hidden)]
 pub mod mcp_bindings {
     wit_bindgen::generate!({ world: "mcp-tools", path: "wit", pub_export_macro: true,
-        export_macro_name: "__export_mcp_world", default_bindings_module: "openidea_plugin::mcp_bindings",
+        export_macro_name: "__export_mcp_world", default_bindings_module: "pyforge_plugin::mcp_bindings",
         with: {
             "openidea:plugin/types@1.4.0": crate::bindings::openidea::plugin::types,
             "openidea:plugin/invocation@1.4.0": crate::bindings::openidea::plugin::invocation,

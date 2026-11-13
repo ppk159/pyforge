@@ -2152,7 +2152,7 @@ impl From<String> for Failure {
 }
 
 /// Whether `e` reports a usage or rate limit, and when it resets: as native agents report
-/// it (`data.openidea.usageLimit.resetsAtMs`), or as ACP agents word it.
+/// it (`data.pyforge.usageLimit.resetsAtMs`), or as ACP agents word it.
 fn usage_limit(e: &RpcError) -> Option<Option<f64>> {
     let RpcError::Server { message, data, .. } = e else { return None };
     if let Some(limit) = data.as_ref().and_then(|d| d.pointer("/openidea/usageLimit")) {

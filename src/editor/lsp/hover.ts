@@ -36,6 +36,8 @@ import { editorPrefs } from "@/platform/editorSettings";
 import { CONTRIBUTED_HOVER, contributedAt, type ContributedHover } from "@/editor/api";
 import { navigationModifierHeld, onNavigationModifier, pointerTarget } from "@/platform/navigationModifier";
 import { languageSemantics } from "./semantic";
+import { declarationFallback } from "./syntaxFallback";
+import { docstringAfter } from "./fallbackDoc";
 
 let hoverRequest: RequestId | null = null;
 
@@ -62,16 +64,69 @@ export async function requestHover(view: EditorView, pos: number): Promise<Hover
     };
   if (hoverRequest !== null && isTauri()) void commands.cancelRequest(hoverRequest);
   const id = (hoverRequest = nextRequestId());
+  let answered: Hover | null = null;
   try {
     const h = await lspRequest(
       () => commands.lspHover(id, doc.doc, offsetToPos(view.state.doc, pos)),
       () => hoverRequest === id,
     );
-    return h && !isEmptyMarkup(h.contents) ? h : null;
+    answered = h && !isEmptyMarkup(h.contents) ? h : null;
+  } catch (e) {
+    // Dumb mode: no server to answer, so read the definition's own text instead.
+    const fb = await syntaxHover(view, doc, pos).catch(() => null);
+    if (fb) return fb;
+    throw e;
   } finally {
     if (hoverRequest === id) hoverRequest = null;
   }
+  if (answered) return answered;
+  // The server answered nothing here (not a symbol it models): try the syntax tree.
+  return (await syntaxHover(view, doc, pos).catch(() => null)) ?? null;
 }
+
+/**
+ * Documentation from the definition's source: locate it with the structure service,
+ * then read the docstring that follows its header.
+ *
+ * Same source of truth as Go to Declaration, so a symbol the IDE can navigate to is a
+ * symbol it can explain. Returns null rather than a guess when the definition has no
+ * docstring or the target file cannot be read.
+ */
+async function syntaxHover(
+  view: EditorView,
+  doc: { doc: number; path: string; language: string },
+  pos: number,
+): Promise<Hover | null> {
+  const symbol = offsetToPos(view.state.doc, pos);
+  const found = await declarationFallback(doc, view.state.doc, symbol);
+  if (found.kind === "unsupported" || !found.targets.length) return null;
+  const target = found.targets[0]!;
+  const lines = await readFileLines(target.path);
+  if (!lines) return null;
+  // The target already is the declaration: a `def` line or a `class` line. Asking
+  // the structure service for its enclosing declaration first would drop every symbol
+  // it does not classify as a direct member — nested defs, decorated ones, anything
+  // inside a conditional — which is most of a real `service/` module.
+  const headerLine = target.range.start.line;
+  const header = lines[headerLine];
+  if (header === undefined) return null;
+  const text = docstringAfter(lines, headerLine, indentOf(header));
+  if (!text) return null;
+  const signature = header.trim();
+  return {
+    contents: {
+      kind: "markdown",
+      value: `\`\`\`python
+${signature}
+\`\`\`
+
+${text}`,
+    },
+    range: { start: symbol, end: offsetToPos(view.state.doc, pos + 1) },
+  };
+}
+
+const indentOf = (line: string) => line.length - line.trimStart().length;
 
 function renderDiagnostics(view: EditorView, diags: PlacedDiagnostic[]): HTMLElement {
   const box = document.createElement("div");

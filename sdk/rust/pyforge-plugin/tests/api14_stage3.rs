@@ -1,4 +1,4 @@
-use openidea_plugin::{host, mock::MockHost, *};
+use pyforge_plugin::{host, mock::MockHost, *};
 #[test]
 fn keyed_terminals_require_program_grants_and_reuse_only_live_operations() {
     let mock = MockHost::install();

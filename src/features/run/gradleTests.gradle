@@ -47,7 +47,7 @@ allprojects {
 gradle.projectsEvaluated {
     allprojects {
         tasks.withType(Test).configureEach { Test task ->
-            if (System.getProperty('openidea.run.debug') == 'true') {
+            if (System.getProperty('pyforge.run.debug') == 'true') {
                 task.debugOptions.enabled = false
                 task.doFirst {
                     task.setJvmArgs(task.jvmArgs.findAll {

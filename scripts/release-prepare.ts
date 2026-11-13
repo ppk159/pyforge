@@ -2,7 +2,7 @@
  * Prepares the release commit: `pnpm release:prepare 0.1.38` sets the app version in
  * Cargo.toml, package.json and src-tauri/tauri.conf.json, refreshes Cargo.lock, and,
  * when wit/ carries a newer plugin API than the released snapshot, copies wit/*.wit
- * over sdk/rust/openidea-plugin/tests/api/released/ (the release workflow refuses a
+ * over sdk/rust/pyforge-plugin/tests/api/released/ (the release workflow refuses a
  * tag whose wit/ and snapshot versions differ). Commit the result as `chore: v<version>`.
  */
 import { spawnSync } from "node:child_process";
@@ -10,7 +10,7 @@ import { copyFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from "
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const SNAPSHOT = "sdk/rust/openidea-plugin/tests/api/released";
+export const SNAPSHOT = "sdk/rust/pyforge-plugin/tests/api/released";
 
 /** `0.1.38` from `0.1.38` or `v0.1.38`; throws for anything else. */
 export function parseVersion(arg: string | undefined): string {

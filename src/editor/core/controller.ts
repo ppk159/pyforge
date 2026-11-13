@@ -8,8 +8,8 @@ import { EditorSelection } from "@codemirror/state";
 import { create } from "zustand";
 import { setContext } from "@/platform/context";
 import { shortcutLabel } from "@/platform/keymap";
-import { isSameOrInside } from "@/platform/paths";
 import { basename, useProject } from "@/platform/project";
+import { isSameOrInside } from "@/platform/paths";
 import { editorPrefs } from "@/platform/editorSettings";
 import {
   _emitEditorEvent,
@@ -503,6 +503,9 @@ export class EditorController implements SlotHost {
     clearTimeout(this.sessionTimer);
     const root = this.sessionRoot;
     if (!root) return;
+    // A tab window shares its root with the window it came from: writing here would
+    // replace that window's stored tabs with this one's single file.
+    if (useProject.getState().tabWindow) return;
     const files: Record<string, FileViewState> = Object.fromEntries(this.restoredViews);
     for (const slot of this.slots.values()) {
       if (slot.disposed) continue;
@@ -521,6 +524,10 @@ export class EditorController implements SlotHost {
   /** Reopens the tabs, splits and carets saved for `root` (after the project opened). */
   restoreSession(root: string) {
     this.sessionRoot = root;
+    // A tab window was opened for one file: the session stored for this root belongs to
+    // the window the tab came from, and restoring it would open every tab that one had.
+    // It starts empty and its own session is not written either (see `storeSession`).
+    if (useProject.getState().tabWindow) return;
     const session = loadSession(root);
     if (!session) return;
     const state = restoreTabsState(session, fileKey);
@@ -1526,6 +1533,9 @@ export class EditorController implements SlotHost {
           await slot.model.save("explicit");
         }
         try {
+          // The project root, so the new window shares this project's index, language
+          // servers and documents instead of indexing a second copy; the backend marks it
+          // a tab window, which hides the Project tree and the project name in the title.
           await call(commands.windowOpenFileInNewWindow(inProject ? project.root : null, path));
           return true;
         } catch (e) {

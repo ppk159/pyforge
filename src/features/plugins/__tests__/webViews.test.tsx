@@ -95,9 +95,9 @@ describe("web view helpers", () => {
 
   it("spells scheme URLs the way each webview expects", () => {
     expect(webSchemeUrl("acme.draw/abc/web/index.html", false)).toBe(
-      "openidea-plugin://localhost/acme.draw/abc/web/index.html",
+      "pyforge-plugin://localhost/acme.draw/abc/web/index.html",
     );
-    expect(webSchemeUrl("p/r/web/a b.html", true)).toBe("http://openidea-plugin.localhost/p/r/web/a%20b.html");
+    expect(webSchemeUrl("p/r/web/a b.html", true)).toBe("http://pyforge-plugin.localhost/p/r/web/a%20b.html");
   });
 });
 
@@ -139,7 +139,7 @@ describe("frame bridge", () => {
       window.dispatchEvent(new MessageEvent("message", { data: { tag: FRAME_TAG, ...data }, source: window }));
     try {
       new Function(script)();
-      const api = (window as unknown as { openidea: Record<string, never> }).openidea as unknown as {
+      const api = (window as unknown as { pyforge: Record<string, never> }).pyforge as unknown as {
         document: {
           get(): Promise<unknown>;
           edit(v: number, e: TextChange[]): Promise<{ version: number }>;
@@ -170,7 +170,7 @@ describe("frame bridge", () => {
       expect(changes).toEqual([{ version: 4, text: "xyz" }]);
     } finally {
       post.mockRestore();
-      delete (window as unknown as { openidea?: unknown }).openidea;
+      delete (window as unknown as { pyforge?: unknown }).pyforge;
     }
   });
 });
@@ -252,7 +252,7 @@ describe("WebView", () => {
   });
 
   it("follows the installed package: a new revision reloads the page, an unchanged one keeps it", async () => {
-    let url = "openidea-plugin://localhost/acme.draw/r1/web/index.html";
+    let url = "pyforge-plugin://localhost/acme.draw/r1/web/index.html";
     setPluginsBackend({ ...createMemoryPluginsBackend([]), webPageUrl: async () => url });
     const info = (version: string) =>
       ({ id: "acme.draw", version, hasCode: false, capabilities: [] }) as unknown as PluginInfo;
@@ -267,7 +267,7 @@ describe("WebView", () => {
     expect(view.container.querySelector("iframe")).toBe(frame);
     expect(frame.getAttribute("src")).toContain("/r1/");
 
-    url = "openidea-plugin://localhost/acme.draw/r2/web/index.html";
+    url = "pyforge-plugin://localhost/acme.draw/r2/web/index.html";
     usePlugins.setState({ plugins: [info("1.0.1")] });
     await waitFor(() => expect(view.container.querySelector("iframe")?.getAttribute("src")).toContain("/r2/"));
   });
@@ -502,7 +502,7 @@ describe("WebView", () => {
       const normal = await frameOf(first.container);
       fireEvent.load(normal.frame);
       expect(
-        normal.posted.some((m) => (m.theme as { vars: Record<string, string> })?.vars["--openidea-corner-inset-width"]),
+        normal.posted.some((m) => (m.theme as { vars: Record<string, string> })?.vars["--pyforge-corner-inset-width"]),
       ).toBe(false);
       expect(first.container.querySelector('[data-toolwindow="plugin.acme.kube.normal"] header')).not.toBeNull();
       expect(screen.getByText("Normal View")).toBeInTheDocument();
@@ -548,9 +548,9 @@ describe("WebView", () => {
         expect(
           posted.some(
             (m) =>
-              (m.theme as { vars?: Record<string, string> } | undefined)?.vars?.["--openidea-corner-inset-width"] ===
+              (m.theme as { vars?: Record<string, string> } | undefined)?.vars?.["--pyforge-corner-inset-width"] ===
                 "64px" &&
-              (m.theme as { vars?: Record<string, string> } | undefined)?.vars?.["--openidea-corner-inset-height"] ===
+              (m.theme as { vars?: Record<string, string> } | undefined)?.vars?.["--pyforge-corner-inset-height"] ===
                 "34px",
           ),
         ).toBe(true),

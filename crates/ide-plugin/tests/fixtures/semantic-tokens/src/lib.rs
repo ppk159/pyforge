@@ -1,5 +1,5 @@
-use openidea_plugin::semantic_tokens::{Document, SemanticToken, SemanticTokens, TokenKind};
-use openidea_plugin::{Error, Invocation, Plugin, Range, register_plugin, text};
+use pyforge_plugin::semantic_tokens::{Document, SemanticToken, SemanticTokens, TokenKind};
+use pyforge_plugin::{Error, Invocation, Plugin, Range, register_plugin, text};
 
 #[derive(Default)]
 struct Fixture;

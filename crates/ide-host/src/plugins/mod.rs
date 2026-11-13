@@ -1,7 +1,7 @@
 //! The plugin host: assembles the extension
 //! registry (`ide-extension`), the grant ledger and the Wasm runtime
 //! (`ide-plugin`). It runs where the project is — in the desktop app for local
-//! projects, in `openidea-server` for remote ones; the desktop shell only adapts
+//! projects, in `pyforge-server` for remote ones; the desktop shell only adapts
 //! it to Tauri commands.
 //!
 //! Lifecycle of a package: its manifest is parsed and every declaration
@@ -11,9 +11,9 @@
 //! only when one of its activation events fires (a command runs, or start-up
 //! finished for `on-startup-finished`).
 //!
-//! Sources: `<plugins_dir>/<id>/` (installed), `<project>/.openidea/plugins/*/`
+//! Sources: `<plugins_dir>/<id>/` (installed), `<project>/.pyforge/plugins/*/`
 //! (project plugins, loaded by [`PluginHost::sync_project`] for trusted
-//! projects) and folders linked with `openidea-plugin link` (`links.json`).
+//! projects) and folders linked with `pyforge-plugin link` (`links.json`).
 
 mod api;
 mod auth;
@@ -94,7 +94,7 @@ use std::time::{Duration, Instant};
 const STATE_FILE: &str = "state.json";
 const LINKS_FILE: &str = "links.json";
 /// Project plugins live here, relative to a project root.
-pub const DEV_PLUGINS_DIR: &str = ".openidea/plugins";
+pub const DEV_PLUGINS_DIR: &str = ".pyforge/plugins";
 
 #[derive(Default, Serialize, Deserialize)]
 struct PersistedState {
@@ -682,7 +682,7 @@ impl PluginHost {
         self.changed();
     }
 
-    /// Loads new project plugins from `<root>/.openidea/plugins/` (trusted
+    /// Loads new project plugins from `<root>/.pyforge/plugins/` (trusted
     /// projects only) and unloads vanished ones. Each still needs the user's
     /// consent before it runs.
     pub fn sync_project(&self, root: &Path) {
@@ -714,7 +714,7 @@ impl PluginHost {
         }
     }
 
-    /// Re-reads `links.json` (written by `openidea-plugin link`): loads new
+    /// Re-reads `links.json` (written by `pyforge-plugin link`): loads new
     /// linked plugins and unloads unlinked ones.
     pub fn sync_links(&self) {
         let links = self.links().paths;
@@ -1194,7 +1194,7 @@ impl PluginHost {
         let plugin = self.get(id)?;
         if plugin.source != PluginSource::Installed {
             return Err(IdeError::invalid(
-                "development plugins are removed by deleting them from .openidea/plugins or unlinking them",
+                "development plugins are removed by deleting them from .pyforge/plugins or unlinking them",
             ));
         }
         // Its secrets (kept outside its directory, in the OS keychain on the desktop) go with it.

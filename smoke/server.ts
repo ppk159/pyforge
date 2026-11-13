@@ -1,5 +1,5 @@
 /**
- * `openidea-server --stdio`, spoken to as the desktop app does in remote development:
+ * `pyforge-server --stdio`, spoken to as the desktop app does in remote development:
  * JSON-RPC with `Content-Length` framing over the server's stdin / stdout.
  */
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
@@ -17,7 +17,7 @@ export const repoRoot = join(dirname(import.meta.filename), "..");
 /** The server binary: `OPENIDEA_SERVER`, else the workspace's debug build. */
 function serverBinary(): string {
   const exe = process.platform === "win32" ? ".exe" : "";
-  return process.env.OPENIDEA_SERVER ?? join(repoRoot, "target", "debug", `openidea-server${exe}`);
+  return process.env.OPENIDEA_SERVER ?? join(repoRoot, "target", "debug", `pyforge-server${exe}`);
 }
 
 interface Pending {
@@ -142,7 +142,7 @@ export class Server {
       this.pending.clear();
     });
     child.on("exit", (code) => {
-      for (const p of this.pending.values()) p.reject(new Error(`openidea-server exited (${code}): ${this.log()}`));
+      for (const p of this.pending.values()) p.reject(new Error(`pyforge-server exited (${code}): ${this.log()}`));
       this.pending.clear();
     });
   }
@@ -242,7 +242,7 @@ export class Server {
               timer = setTimeout(resolve, 5000);
             }),
           ]);
-          if (running()) errors.add(new Error(`openidea-server (${pid}) did not exit after forced cleanup`));
+          if (running()) errors.add(new Error(`pyforge-server (${pid}) did not exit after forced cleanup`));
         } finally {
           clearTimeout(timer);
         }

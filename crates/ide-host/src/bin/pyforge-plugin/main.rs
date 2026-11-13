@@ -1,17 +1,17 @@
-//! `openidea-plugin`: scaffolds, builds, checks and links OpenIDEA plugins.
+//! `pyforge-plugin`: scaffolds, builds, checks and links OpenIDEA plugins.
 //!
 //! ```text
-//! openidea-plugin new <dir> [--template command|theme|icon-theme|language] [--id ID] [--name NAME] [--sdk PATH]
-//! openidea-plugin build [dir] [--debug]   # cargo → dist/plugin.wasm, then `check`
-//! openidea-plugin check [dir|package]     # validate the package as the IDE would install it
-//! openidea-plugin link [dir]              # load the folder in the IDE without installing it
-//! openidea-plugin unlink [dir]
-//! openidea-plugin links                   # list linked folders
-//! openidea-plugin keygen <key-file>       # a publisher's Ed25519 key
-//! openidea-plugin endorse <new-public-key> --key OLD --publisher ID   # vouch for a new key
-//! openidea-plugin pack [dir] [--key F --publisher ID] [--out FILE]   # <id>-<version>.oiplugin
-//! openidea-plugin index <dir> [--publisher ID --name NAME --key F [--previous-key F]]   # marketplace index.json
-//! openidea-plugin merge <index> <other-index> --keep ID               # list another index's publishers
+//! pyforge-plugin new <dir> [--template command|theme|icon-theme|language] [--id ID] [--name NAME] [--sdk PATH]
+//! pyforge-plugin build [dir] [--debug]   # cargo → dist/plugin.wasm, then `check`
+//! pyforge-plugin check [dir|package]     # validate the package as the IDE would install it
+//! pyforge-plugin link [dir]              # load the folder in the IDE without installing it
+//! pyforge-plugin unlink [dir]
+//! pyforge-plugin links                   # list linked folders
+//! pyforge-plugin keygen <key-file>       # a publisher's Ed25519 key
+//! pyforge-plugin endorse <new-public-key> --key OLD --publisher ID   # vouch for a new key
+//! pyforge-plugin pack [dir] [--key F --publisher ID] [--out FILE]   # <id>-<version>.oiplugin
+//! pyforge-plugin index <dir> [--publisher ID --name NAME --key F [--previous-key F]]   # marketplace index.json
+//! pyforge-plugin merge <index> <other-index> --keep ID               # list another index's publishers
 //! ```
 //!
 //! `link` writes `links.json` in the IDE's plugins directory
@@ -29,13 +29,13 @@ use std::process::{Command, ExitCode};
 use std::sync::Arc;
 
 const USAGE: &str = "\
-usage: openidea-plugin <command> [options]
+usage: pyforge-plugin <command> [options]
 
 commands:
   new <dir> [--template T] [--id ID] [--name NAME] [--sdk PATH]
         create a plugin; T = command (default), theme, icon-theme, language. A Rust
         plugin depends on the SDK of this tool's release (git); --sdk PATH uses a
-        local sdk/rust/openidea-plugin instead
+        local sdk/rust/pyforge-plugin instead
   build [dir] [--debug]   compile a Rust plugin to dist/plugin.wasm and check it
   check [dir|package]     validate the package (folder or .oiplugin) as the IDE would install it
   link [dir]              load the folder in the IDE without installing it
@@ -77,7 +77,7 @@ fn main() -> ExitCode {
         Some("index") => cmd_index(&args[1..]),
         Some("merge") => cmd_merge(&args[1..]),
         Some("--version" | "-V") => {
-            println!("openidea-plugin {} (plugin API {})", env!("CARGO_PKG_VERSION"), ide_extension::ENGINE_VERSION);
+            println!("pyforge-plugin {} (plugin API {})", env!("CARGO_PKG_VERSION"), ide_extension::ENGINE_VERSION);
             Ok(())
         }
         Some("help" | "--help" | "-h") | None => {
@@ -156,7 +156,7 @@ fn canonical(dir: &Path) -> Result<PathBuf, String> {
 fn cmd_new(args: &[String]) -> Result<(), String> {
     let a = Args::parse(args, &[], &["template", "id", "name", "sdk"])?;
     let [dir] = a.positional.as_slice() else {
-        return Err("usage: openidea-plugin new <dir> [--template T] [--id ID] [--name NAME]".into());
+        return Err("usage: pyforge-plugin new <dir> [--template T] [--id ID] [--name NAME]".into());
     };
     let dir = PathBuf::from(dir);
     let template = templates::Template::parse(a.value("template").unwrap_or("command"))?;
@@ -200,11 +200,11 @@ fn cmd_new(args: &[String]) -> Result<(), String> {
     println!("next:");
     if template == templates::Template::Command {
         println!("  cargo test --manifest-path {shown}/Cargo.toml   # unit tests against the mock host");
-        println!("  openidea-plugin build {shown}");
+        println!("  pyforge-plugin build {shown}");
     } else {
-        println!("  openidea-plugin check {shown}");
+        println!("  pyforge-plugin check {shown}");
     }
-    println!("  openidea-plugin link {shown}                  # then Settings › Plugins");
+    println!("  pyforge-plugin link {shown}                  # then Settings › Plugins");
     Ok(())
 }
 
@@ -241,15 +241,15 @@ fn sdk_dependency(explicit: Option<&str>, plugin_dir: &Path) -> Result<String, S
     let sdk = match explicit {
         Some(p) => PathBuf::from(p),
         None => match dunce::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")) {
-            Ok(tree) if plugin_dir.starts_with(&tree) => tree.join("sdk/rust/openidea-plugin"),
+            Ok(tree) if plugin_dir.starts_with(&tree) => tree.join("sdk/rust/pyforge-plugin"),
             _ => return Ok(format!("{{ git = \"{REPOSITORY}\", tag = \"v{}\" }}", env!("CARGO_PKG_VERSION"))),
         },
     };
     let sdk = dunce::canonicalize(&sdk).map_err(|_| {
-        format!("the plugin SDK was not found at {}; pass --sdk <path to sdk/rust/openidea-plugin>", sdk.display())
+        format!("the plugin SDK was not found at {}; pass --sdk <path to sdk/rust/pyforge-plugin>", sdk.display())
     })?;
     if !sdk.join("Cargo.toml").is_file() {
-        return Err(format!("{} is not the openidea-plugin SDK (no Cargo.toml)", sdk.display()));
+        return Err(format!("{} is not the pyforge-plugin SDK (no Cargo.toml)", sdk.display()));
     }
     let path = relative(plugin_dir, &sdk).unwrap_or(sdk);
     Ok(format!("{{ path = \"{}\" }}", path.to_string_lossy().replace('\\', "/")))
@@ -453,7 +453,7 @@ fn link(dir: &Path, add: bool) -> Result<(), String> {
         if let Some(wasm) = &m.wasm
             && !dir.join(wasm).is_file()
         {
-            println!("note: {} does not exist yet; run `openidea-plugin build` first", wasm.display());
+            println!("note: {} does not exist yet; run `pyforge-plugin build` first", wasm.display());
         }
         if links.paths.contains(&dir) {
             println!("{} is already linked", dir.display());
@@ -505,7 +505,7 @@ fn read_key(path: &str) -> Result<PublisherKey, String> {
 
 fn cmd_keygen(args: &[String]) -> Result<(), String> {
     let a = Args::parse(args, &[], &[])?;
-    let [file] = a.positional.as_slice() else { return Err("usage: openidea-plugin keygen <key-file>".into()) };
+    let [file] = a.positional.as_slice() else { return Err("usage: pyforge-plugin keygen <key-file>".into()) };
     if Path::new(file).exists() {
         return Err(format!("{file} exists; not overwriting a key"));
     }
@@ -525,7 +525,7 @@ fn cmd_keygen(args: &[String]) -> Result<(), String> {
 
 fn cmd_endorse(args: &[String]) -> Result<(), String> {
     let a = Args::parse(args, &[], &["key", "publisher"])?;
-    let usage = "usage: openidea-plugin endorse <new-public-key> --key <earlier-key-file> --publisher ID";
+    let usage = "usage: pyforge-plugin endorse <new-public-key> --key <earlier-key-file> --publisher ID";
     let ([new], Some(key), Some(publisher)) = (a.positional.as_slice(), a.value("key"), a.value("publisher")) else {
         return Err(usage.into());
     };
@@ -539,7 +539,7 @@ fn cmd_endorse(args: &[String]) -> Result<(), String> {
 
 /// A fresh scratch directory, removed when dropped.
 fn scratch_dir(what: &str) -> Result<tempfile::TempDir, String> {
-    tempfile::Builder::new().prefix(&format!("openidea-plugin-{what}-")).tempdir().map_err(|e| e.to_string())
+    tempfile::Builder::new().prefix(&format!("pyforge-plugin-{what}-")).tempdir().map_err(|e| e.to_string())
 }
 
 /// A scratch host to list a package's files as the IDE would.
@@ -715,11 +715,11 @@ fn register_key(
     Ok(publishers)
 }
 
-/// `index`, unless a newer `openidea-plugin` wrote it (rewriting it would drop what this one can't read).
+/// `index`, unless a newer `pyforge-plugin` wrote it (rewriting it would drop what this one can't read).
 fn current_format(index: Index, file: &str) -> Result<Index, String> {
     if index.is_newer() {
         return Err(format!(
-            "{file}: index format {} is newer than this tool writes; update openidea-plugin",
+            "{file}: index format {} is newer than this tool writes; update pyforge-plugin",
             index.format
         ));
     }
@@ -729,7 +729,7 @@ fn current_format(index: Index, file: &str) -> Result<Index, String> {
 fn cmd_merge(args: &[String]) -> Result<(), String> {
     let a = Args::parse(args, &[], &["keep", "out"])?;
     let [base, other] = a.positional.as_slice() else {
-        return Err("usage: openidea-plugin merge <index> <other-index> --keep ID [--out FILE]".into());
+        return Err("usage: pyforge-plugin merge <index> <other-index> --keep ID [--out FILE]".into());
     };
     let keep = a.value("keep").ok_or("--keep is required")?;
     let out = a.value("out").unwrap_or(base);
@@ -795,19 +795,19 @@ mod tests {
         let tree = dunce::canonicalize(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).unwrap();
         assert_eq!(
             sdk_dependency(None, &tree.join("plugins/official/new")).unwrap(),
-            "{ path = \"../../../sdk/rust/openidea-plugin\" }"
+            "{ path = \"../../../sdk/rust/pyforge-plugin\" }"
         );
         let outside = dunce::canonicalize(std::env::temp_dir()).unwrap().join("my-plugin");
         assert_eq!(
             sdk_dependency(None, &outside).unwrap(),
             format!("{{ git = \"https://github.com/l0ng-ai/openidea\", tag = \"v{}\" }}", env!("CARGO_PKG_VERSION"))
         );
-        let sdk = tree.join("sdk/rust/openidea-plugin");
+        let sdk = tree.join("sdk/rust/pyforge-plugin");
         assert!(sdk_dependency(Some(sdk.to_str().unwrap()), &outside).unwrap().starts_with("{ path = "));
         assert!(
             sdk_dependency(Some(tree.join("wit").to_str().unwrap()), &outside)
                 .unwrap_err()
-                .contains("not the openidea-plugin SDK")
+                .contains("not the pyforge-plugin SDK")
         );
     }
 
@@ -826,7 +826,7 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             let content = content
                 .replace("version = \"0.1.0\"", &format!("version = \"{version}\""))
-                .replace("engines.openidea = \"^1.0\"", &format!("engines.openidea = \"{engine}\"{icon}"));
+                .replace("engines.pyforge = \"^1.0\"", &format!("engines.pyforge = \"{engine}\"{icon}"));
             std::fs::write(path, content).unwrap();
         }
         std::fs::write(src.join("icon.svg"), r#"<svg viewBox="0 0 16 16"><rect width="16" height="16"/></svg>"#)
@@ -954,7 +954,7 @@ mod tests {
             std::fs::write(path, content).unwrap();
         }
         let manifest = std::fs::read_to_string(src.join("plugin.toml")).unwrap();
-        let manifest = manifest.replace("engines.openidea = \"^1.0\"", "engines.openidea = \"^1.2\"");
+        let manifest = manifest.replace("engines.pyforge = \"^1.0\"", "engines.pyforge = \"^1.2\"");
         std::fs::write(src.join("plugin.toml"), format!("icon = \"icon.svg\"\n{manifest}")).unwrap();
         std::fs::write(src.join("icon.svg"), r#"<svg viewBox="0 0 16 16"><rect width="16" height="16"/></svg>"#)
             .unwrap();
@@ -971,12 +971,12 @@ mod tests {
     /// `cargo test` of a new Rust plugin (its own tests against the mock host) with this SDK.
     #[test]
     fn the_command_template_builds_against_the_sdk() {
-        let dir = std::env::temp_dir().join(format!("openidea-plugin-template-build-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("pyforge-plugin-template-build-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let dir = dunce::canonicalize(&dir).unwrap();
         let plugin = dir.join("plugin");
-        let sdk = concat!(env!("CARGO_MANIFEST_DIR"), "/../../sdk/rust/openidea-plugin");
+        let sdk = concat!(env!("CARGO_MANIFEST_DIR"), "/../../sdk/rust/pyforge-plugin");
         let sdk = sdk_dependency(Some(sdk), &plugin).unwrap();
         let vars = templates::Vars { id: "acme.sample", name: "Sample", sdk: Some(&sdk) };
         for (rel, content) in templates::render(templates::Template::Command, &vars) {
@@ -986,7 +986,7 @@ mod tests {
         }
         // The SDK's lockfile keeps the versions its own CI builds with (the resolver also
         // looks up the wasm-only dependencies, which may not be downloaded yet).
-        let sdk_lock = concat!(env!("CARGO_MANIFEST_DIR"), "/../../sdk/rust/openidea-plugin/Cargo.lock");
+        let sdk_lock = concat!(env!("CARGO_MANIFEST_DIR"), "/../../sdk/rust/pyforge-plugin/Cargo.lock");
         std::fs::copy(sdk_lock, plugin.join("Cargo.lock")).unwrap();
         let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
             .args(["test", "--manifest-path"])
@@ -1007,7 +1007,7 @@ mod tests {
     fn every_template_is_a_valid_package() {
         for t in templates::Template::ALL {
             let dir =
-                std::env::temp_dir().join(format!("openidea-plugin-template-{}-{}", t.label(), std::process::id()));
+                std::env::temp_dir().join(format!("pyforge-plugin-template-{}-{}", t.label(), std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             let vars = templates::Vars { id: "acme.sample", name: "Sample", sdk: Some("{ path = \"../sdk\" }") };
             for (rel, content) in templates::render(t, &vars) {

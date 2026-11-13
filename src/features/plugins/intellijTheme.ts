@@ -376,7 +376,7 @@ export function pluginManifest(info: ThemePackageInfo, themes: readonly Converte
     `version = ${tomlString(info.version)}`,
     `description = ${tomlString(info.description)}`,
     `authors = [${info.authors.map(tomlString).join(", ")}]`,
-    `engines.openidea = "^1.0"`,
+    `engines.pyforge = "^1.0"`,
     ...themes.flatMap((c) => [
       "",
       "[[contributes.themes]]",

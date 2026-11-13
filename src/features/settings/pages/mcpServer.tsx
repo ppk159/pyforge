@@ -12,14 +12,14 @@ import styles from "./McpServer.module.css";
 export function httpConfig(status: McpServerStatus): string | null {
   if (!status.url || !status.token) return null;
   const server = { type: "http", url: status.url, headers: { Authorization: `Bearer ${status.token}` } };
-  return JSON.stringify({ mcpServers: { openidea: server } }, null, 2);
+  return JSON.stringify({ mcpServers: { pyforge: server } }, null, 2);
 }
 
 /** The same through the stdio bridge: no token, works for as long as OpenIDEA runs. */
 export function stdioConfig(status: McpServerStatus): string | null {
   const [command, ...args] = status.stdioCommand;
   if (!command) return null;
-  return JSON.stringify({ mcpServers: { openidea: { type: "stdio", command, args } } }, null, 2);
+  return JSON.stringify({ mcpServers: { pyforge: { type: "stdio", command, args } } }, null, 2);
 }
 
 function useStatus(): McpServerStatus | null {

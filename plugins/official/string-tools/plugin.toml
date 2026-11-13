@@ -6,7 +6,7 @@ authors = ["OpenIDEA contributors"]
 license = "Apache-2.0"
 change-notes = "0.1.0 — first release: 26 commands in four groups."
 categories = ["tools"]
-engines.openidea = "^1.0"
+engines.pyforge = "^1.0"
 wasm = "dist/plugin.wasm"
 # The commands are declared below, so Find Action and the keymap list them
 # before the code is ever loaded; it loads on the first one run.

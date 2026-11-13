@@ -25,10 +25,17 @@ export function holdSplash(work: Promise<unknown>): void {
   holds.push(work.catch(() => {}));
 }
 
-/** Fades the splash out once every hold has settled and the page has painted. */
+/**
+ * Fades the splash out once every hold has settled and the page has painted, and
+ * tells `boot.js` the app is up.
+ *
+ * `boot-ready` is dispatched even when `#splash` is already gone: a start slower than
+ * boot.js's 30-second warning has that script replace the splash with its own panel,
+ * and this event is the only thing that takes that panel away again. Running this
+ * function at all means the UI rendered, so a real failure has not happened.
+ */
 export function hideSplash(): void {
   const el = document.getElementById("splash");
-  if (!el) return;
   const timeout = new Promise((resolve) => setTimeout(resolve, MAX_WAIT_MS));
   void Promise.race([Promise.all(holds), timeout]).then(() =>
     // Two frames: let React commit the state the holds produced before uncovering it.
@@ -36,15 +43,21 @@ export function hideSplash(): void {
       requestAnimationFrame(() => {
         setTimeout(
           () => {
+            // A genuine failure keeps its panel; a late start does not (`boot.js`
+            // marks that one "slow", never "failed").
             if (document.documentElement.dataset.boot === "failed") return;
+            if (!el) {
+              window.dispatchEvent(new Event("pyforge:boot-ready"));
+              return;
+            }
             el.classList.add("splash-out");
             setTimeout(() => {
               if (document.documentElement.dataset.boot === "failed") return;
               el.remove();
-              window.dispatchEvent(new Event("openidea:boot-ready"));
+              window.dispatchEvent(new Event("pyforge:boot-ready"));
             }, 200);
           },
-          completeBar(el) ? FILL_MS : 0,
+          el && completeBar(el) ? FILL_MS : 0,
         );
       }),
     ),

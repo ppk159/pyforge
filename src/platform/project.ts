@@ -13,6 +13,12 @@ interface ProjectState {
   openingPath: string | null;
   /** LightEdit: this window edits loose files without a project (`project` stays null). */
   lightEdit: boolean;
+  /**
+   * A tab pulled out of another window: the project is shared (index, servers,
+   * documents) but the window presents itself as a single file — no Project tree,
+   * no project name in the title.
+   */
+  tabWindow: boolean;
 }
 
 export const useProject = create<ProjectState>(() => ({
@@ -21,6 +27,7 @@ export const useProject = create<ProjectState>(() => ({
   opening: false,
   openingPath: null,
   lightEdit: false,
+  tabWindow: false,
 }));
 
 useProject.subscribe((s) => setContext("projectOpening", s.openingPath !== null));

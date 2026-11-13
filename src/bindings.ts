@@ -711,7 +711,7 @@ export const commands = {
 	args: string[],
 	cwd: IpcPath | null,
 	env: { [key in string]: string },
-	/**  Detected configs are regenerated; user configs persist in `.openidea/run.toml`. */
+	/**  Detected configs are regenerated; user configs persist in `.pyforge/run.toml`. */
 	detected: boolean,
 	/**  Test runner configs render results in the test tree. */
 	isTest: boolean,
@@ -964,14 +964,20 @@ export const commands = {
 	settingsPage: string | null,
 	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
 	newProjects: boolean,
-	/**  Where to place the caret in some of `files` (`openidea --line 12 --column 5 <file>`). */
+	/**  Where to place the caret in some of `files` (`pyforge --line 12 --column 5 <file>`). */
 	positions?: FilePosition[],
 	/**  Comparison windows: the revisions to compare (boxed: most launches have none). */
 	comparison?: ComparisonLaunch | null,
-	/**  `openidea diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none). */
+	/**  `pyforge diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none). */
 	diff?: DiffFilesLaunch | null,
 	/**  Deployment windows: the server and local selection to compare. */
 	deployment?: DeploymentLaunch | null,
+	/**
+	 *  A tab pulled out of another window: the project is shared (same index, language
+	 *  servers and documents), but the window presents itself as a single file — no
+	 *  Project tree, no project name in the title.
+	 */
+	tabWindow?: boolean,
 } | null>("window_take_launch"),
 	windowCloseContext: () => __TAURI_INVOKE<CloseContext>("window_close_context"),
 	/**  Projects open in project windows, in window order (title bar project widget). */
@@ -1075,7 +1081,7 @@ export const commands = {
 	pluginSubscribe: (onEvent: Channel<PluginEvent_Deserialize>) => __TAURI_INVOKE<void>("plugin_subscribe", { onEvent }),
 	/**
 	 *  Installed and linked plugins plus the project plugins of this window's
-	 *  project (`<project>/.openidea/plugins/*`, rescanned on every call), with
+	 *  project (`<project>/.pyforge/plugins/*`, rescanned on every call), with
 	 *  the UI contributions to project.
 	 */
 	pluginList: () => typedError<PluginsSnapshot, IdeError>(__TAURI_INVOKE("plugin_list")),
@@ -1091,7 +1097,7 @@ export const commands = {
 	pluginGrant: (id: string, consent: Consent) => typedError<PluginInfo, IdeError>(__TAURI_INVOKE("plugin_grant", { id, consent })),
 	/**  Grants or revokes one declared capability. */
 	pluginSetCapability: (id: string, capability: string, granted: boolean) => typedError<PluginInfo, IdeError>(__TAURI_INVOKE("plugin_set_capability", { id, capability, granted })),
-	/**  Links a development plugin folder (`openidea-plugin link` does the same from a terminal). */
+	/**  Links a development plugin folder (`pyforge-plugin link` does the same from a terminal). */
 	pluginLink: (path: string) => typedError<PluginInfo, IdeError>(__TAURI_INVOKE("plugin_link", { path })),
 	pluginUnlink: (id: string) => typedError<null, IdeError>(__TAURI_INVOKE("plugin_unlink", { id })),
 	/**  Validated assets of a plugin whose id starts with `prefix` (icon theme mapping and SVGs). */
@@ -3469,7 +3475,7 @@ export type Diagnostic = {
 	server?: string | null,
 };
 
-/**  The two files of a command-line diff (`openidea diff a.txt b.txt`), both sides editable. */
+/**  The two files of a command-line diff (`pyforge diff a.txt b.txt`), both sides editable. */
 export type DiffFilesLaunch = {
 	left: IpcPath,
 	right: IpcPath,
@@ -4921,7 +4927,7 @@ export type IndexEntry = {
 	capabilities?: string[],
 	/**
 	 *  The plugin API versions it loads in (a semver requirement): its
-	 *  manifest's `engines.openidea` and the API its component was built for.
+	 *  manifest's `engines.pyforge` and the API its component was built for.
 	 *  Required: an entry without one is offered to no IDE.
 	 */
 	engine?: string,
@@ -5486,14 +5492,20 @@ export type Launch = {
 	settingsPage: string | null,
 	/**  Settings windows: edit the global layer only ("Settings for New Projects"). */
 	newProjects: boolean,
-	/**  Where to place the caret in some of `files` (`openidea --line 12 --column 5 <file>`). */
+	/**  Where to place the caret in some of `files` (`pyforge --line 12 --column 5 <file>`). */
 	positions?: FilePosition[],
 	/**  Comparison windows: the revisions to compare (boxed: most launches have none). */
 	comparison?: ComparisonLaunch | null,
-	/**  `openidea diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none). */
+	/**  `pyforge diff a.txt b.txt`: the two files to open in the diff viewer (boxed: most launches have none). */
 	diff?: DiffFilesLaunch | null,
 	/**  Deployment windows: the server and local selection to compare. */
 	deployment?: DeploymentLaunch | null,
+	/**
+	 *  A tab pulled out of another window: the project is shared (same index, language
+	 *  servers and documents), but the window presents itself as a single file — no
+	 *  Project tree, no project name in the title.
+	 */
+	tabWindow?: boolean,
 };
 
 export type LaunchConfig = {
@@ -6627,9 +6639,9 @@ export type PluginSecretState = {
 export type PluginSource = 
 /**  Installed under `<app-data>/plugins/<id>/`. */
 "installed" | 
-/**  Loaded from `<project>/.openidea/plugins/<dir>/` while that project is open. */
+/**  Loaded from `<project>/.pyforge/plugins/<dir>/` while that project is open. */
 "dev" | 
-/**  A development plugin linked from any folder (`openidea-plugin link`). */
+/**  A development plugin linked from any folder (`pyforge-plugin link`). */
 "linked";
 
 export type PluginStats = {
@@ -7449,7 +7461,7 @@ export type RunConfig_Deserialize = {
 	args: string[],
 	cwd: IpcPath | null,
 	env: { [key in string]: string },
-	/**  Detected configs are regenerated; user configs persist in `.openidea/run.toml`. */
+	/**  Detected configs are regenerated; user configs persist in `.pyforge/run.toml`. */
 	detected: boolean,
 	/**  Test runner configs render results in the test tree. */
 	isTest: boolean,
@@ -7469,7 +7481,7 @@ export type RunConfig_Serialize = {
 	args: string[],
 	cwd: IpcPath | null,
 	env: { [key in string]: string },
-	/**  Detected configs are regenerated; user configs persist in `.openidea/run.toml`. */
+	/**  Detected configs are regenerated; user configs persist in `.pyforge/run.toml`. */
 	detected: boolean,
 	/**  Test runner configs render results in the test tree. */
 	isTest: boolean,
@@ -7499,7 +7511,7 @@ export type RunExtras_Deserialize = {
 	params?: { [key in string]: string },
 	/**  Folder in the Run/Debug Configurations tree. */
 	folder?: string | null,
-	/**  Stored in the workspace (`.openidea/run.local.toml`, not shared) instead of `run.toml`. */
+	/**  Stored in the workspace (`.pyforge/run.local.toml`, not shared) instead of `run.toml`. */
 	local?: boolean,
 	/**  Off: the process gets only the configured variables. */
 	includeSystemEnv?: boolean,
@@ -7554,7 +7566,7 @@ export type RunExtras_Serialize = {
 	params?: { [key in string]: string },
 	/**  Folder in the Run/Debug Configurations tree. */
 	folder?: string | null,
-	/**  Stored in the workspace (`.openidea/run.local.toml`, not shared) instead of `run.toml`. */
+	/**  Stored in the workspace (`.pyforge/run.local.toml`, not shared) instead of `run.toml`. */
 	local?: boolean,
 	/**  Off: the process gets only the configured variables. */
 	includeSystemEnv?: boolean,
@@ -8946,7 +8958,7 @@ export type WebGoto = {
 /**  The page of a web view, for the client to load in its frame. */
 export type WebPage = {
 	/**
-	 *  `<plugin id>/<revision>/<entry>` under the `openidea-plugin` scheme. The
+	 *  `<plugin id>/<revision>/<entry>` under the `pyforge-plugin` scheme. The
 	 *  revision changes with the installed package, so a cached file is never
 	 *  stale; relative URLs in the page resolve to the package's files.
 	 */

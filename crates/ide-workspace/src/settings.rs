@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use toml_edit::{DocumentMut, Item, Table, TableLike};
 
-/// Layered settings: defaults → `<app-config>/settings.toml` → `<project>/.openidea/settings.toml`.
+/// Layered settings: defaults → `<app-config>/settings.toml` → `<project>/.pyforge/settings.toml`.
 /// Writes go through `toml_edit` so user comments survive.
 ///
 /// TOML keys use the camelCase names of the serde [`Settings`] struct, e.g.
@@ -394,7 +394,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let cfg = tmp.path().join("cfg");
         let proj = tmp.path().join("proj");
-        std::fs::create_dir_all(proj.join(".openidea")).unwrap();
+        std::fs::create_dir_all(proj.join(".pyforge")).unwrap();
         let store = SettingsStore::load(&cfg, Some(&proj));
         let schemes = json!({"custom-forest": {"name": "Forest", "parent": "dark", "attributes": {
             "keyword": {"foreground": "#99dd77", "bold": true}
@@ -412,7 +412,7 @@ mod tests {
         );
         assert!(store.set(SettingsScope::Project, "editor", json!({"customSchemes": schemes})).is_err());
         std::fs::write(
-            proj.join(".openidea/settings.toml"),
+            proj.join(".pyforge/settings.toml"),
             "[editor.customSchemes.custom-forest]\nname = \"Project\"\nparent = \"light\"\nattributes = {}\n",
         )
         .unwrap();
@@ -427,10 +427,10 @@ mod tests {
         let cfg = tmp.path().join("cfg");
         let proj = tmp.path().join("proj");
         std::fs::create_dir_all(&cfg).unwrap();
-        std::fs::create_dir_all(proj.join(".openidea")).unwrap();
+        std::fs::create_dir_all(proj.join(".pyforge")).unwrap();
         std::fs::write(cfg.join("settings.toml"), "keymap = \"vscode\"\n[editor]\nfontSize = 15\ntabSize = 2\n")
             .unwrap();
-        std::fs::write(proj.join(".openidea/settings.toml"), "[editor]\ntabSize = 8\n").unwrap();
+        std::fs::write(proj.join(".pyforge/settings.toml"), "[editor]\ntabSize = 8\n").unwrap();
 
         let s = SettingsStore::load(&cfg, Some(&proj)).effective();
         assert_eq!(s.keymap, "vscode");
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(s.editor.font_family, "JetBrains Mono");
 
         // Invalid project layer: ignored, global still applies.
-        std::fs::write(proj.join(".openidea/settings.toml"), "[editor]\ntabSize = \"wide\"\n").unwrap();
+        std::fs::write(proj.join(".pyforge/settings.toml"), "[editor]\ntabSize = \"wide\"\n").unwrap();
         let store = SettingsStore::load(&cfg, Some(&proj));
         assert_eq!(store.effective().editor.tab_size, 2);
         // Broken TOML in the global layer: defaults.
@@ -541,7 +541,7 @@ mod tests {
         // Project layer is created on demand and wins.
         let s = store.set(SettingsScope::Project, "editor.fontSize", json!(12)).unwrap();
         assert_eq!(s.editor.font_size, 12.0);
-        assert_eq!(std::fs::read_to_string(proj.join(".openidea/settings.toml")).unwrap(), "[editor]\nfontSize = 12\n");
+        assert_eq!(std::fs::read_to_string(proj.join(".pyforge/settings.toml")).unwrap(), "[editor]\nfontSize = 12\n");
         let s = store.set(SettingsScope::Project, "editor.fontSize", json!(null)).unwrap();
         assert_eq!(s.editor.font_size, 16.0);
 
@@ -671,8 +671,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let config = tmp.path().join("config");
         let project = tmp.path().join("project");
-        std::fs::create_dir_all(project.join(".openidea")).unwrap();
-        std::fs::write(project.join(".openidea/settings.toml"), "[mcpServer]\nenabled = true\n").unwrap();
+        std::fs::create_dir_all(project.join(".pyforge")).unwrap();
+        std::fs::write(project.join(".pyforge/settings.toml"), "[mcpServer]\nenabled = true\n").unwrap();
         let settings = SettingsStore::load(&config, Some(&project));
         assert!(!settings.effective().mcp_server.enabled);
         assert!(settings.set(SettingsScope::Project, "mcpServer.enabled", serde_json::json!(true)).is_err());

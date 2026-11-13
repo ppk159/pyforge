@@ -32,10 +32,13 @@ export function installWindowTitle(): () => void {
     });
   }
   const update = () => {
-    const { project, settings } = useProject.getState();
+    const { project, settings, tabWindow } = useProject.getState();
     const fullPath = settings?.appearance?.fullPathInTitle === true;
     const host = useRemote.getState().session?.host ?? null;
-    const title = windowTitle(project?.name, useEditorRegistry.getState().active?.ctx.path, fullPath, host);
+    // A tab window shares its project but presents one file: naming the project in the
+    // title made it look like a second copy of the project.
+    const name = tabWindow ? null : project?.name;
+    const title = windowTitle(name, useEditorRegistry.getState().active?.ctx.path, fullPath, host);
     if (title === last) return;
     last = title;
     if (typeof document !== "undefined") document.title = title;

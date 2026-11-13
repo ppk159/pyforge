@@ -56,7 +56,7 @@ export function djangoTestsOf(config: RunConfig, labels: readonly string[]): Pic
 export const djangoTestType: RunConfigTypeContribution = {
   id: "django-test",
   label: "Django tests",
-  icon: "file-python",
+  icon: "django",
   description: "Run Django tests with manage.py test",
   defaults: { command: "python3" },
   debugAdapter: "debugpy",

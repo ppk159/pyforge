@@ -46,12 +46,16 @@ import {
 import { lspSnippetToCm, snippetVariables } from "./snippet";
 import { docOf, isUnavailable, lspDoc, lspRequest, reportLspError } from "./lsp";
 import { offsetToPos, posToOffset, textEditsToChanges } from "./positions";
+import { structure } from "@/editor/structure";
 import { isEmptyMarkup, renderCode, renderMarkup } from "./markdown";
 import { selectableText } from "@/ui/selectableText";
 import { iconNode } from "./iconMarkup";
 import { parameterInfoOrLeave, triggerSignatureHelp } from "./signature";
 import { featureBackoff } from "./availability";
 import { pathCompletionSource, pathContext, pathLike } from "./fileReferences";
+import { membersOfClass, outlineOf, type ProvenMember } from "./memberCompletion";
+import { docContext, enclosingClassName, memberReceiver, membersFor, toCompletionResult } from "./memberSource";
+import { memberOrigin } from "./syntaxFallback";
 import { editorPrefs } from "@/platform/editorSettings";
 import { tx } from "@/platform/i18n";
 import { showHint } from "./hint";
@@ -353,8 +357,16 @@ function cancelInflight() {
   inflight = null;
 }
 
-/** Language-data completion sources (keywords etc.), used when no server answers. */
+/**
+ * Language-data completion sources (keywords etc.), used when no server answers.
+ *
+ * `obj.` is answered first, and only from what the file proves (`memberSource`): a
+ * keyword list after a dot is noise. When the receiver's origin is unknown this returns
+ * null and the keyword sources answer as before.
+ */
 async function fallback(ctx: CompletionContext): Promise<CompletionResult | null> {
+  const members = await memberFallback(ctx);
+  if (members) return members;
   const sources = ctx.state.languageDataAt<CompletionSource | readonly (string | Completion)[]>(
     "autocomplete",
     ctx.pos,
@@ -365,6 +377,70 @@ async function fallback(ctx: CompletionContext): Promise<CompletionResult | null
     if (r) return r;
   }
   return null;
+}
+
+/**
+ * Members of class `name`, read from the file the index says defines it.
+ *
+ * The index is the only source of "where is this class"; the members themselves come
+ * from that file's outline, so nothing is inferred from the name alone.
+ */
+async function classMembersByName(fromPath: string, name: string): Promise<ProvenMember[] | null> {
+  let matches;
+  try {
+    matches = await call(commands.findSymbols(name, "types", 20));
+  } catch {
+    return null;
+  }
+  const own = matches.find((m) => m.name === name && m.path === fromPath) ?? matches.find((m) => m.name === name);
+  if (!own) return null;
+  const items = await outlineOf(own.path);
+  return items ? membersOfClass(items, name) : null;
+}
+
+/** The open project's root, or null when no project is open. */
+function projectRootOf(_path: string): string | null {
+  return useProject.getState().project?.root ?? null;
+}
+
+/** The file an `import` of `module` refers to.
+ *
+ * `importedModulePaths` answers with the dotted module turned into a path — either a
+ * dotted module (`a/b/c`) or the name inside it (`a/b/c` + `/c`), relative to the import
+ * root. That root is the project, not the importing file's directory, so the module path
+ * is appended to the project root. When the module is not under it (a sibling checkout,
+ * an installed package) the path simply does not exist and the completion offers nothing.
+ */
+function resolveModule(projectRoot: string | null, module: string): string {
+  if (module.startsWith("/") || /^[A-Za-z]:/.test(module)) return module;
+  const root = projectRoot ?? "";
+  return root ? `${root.replace(/\/$/, "")}/${module}` : module;
+}
+
+/** Members after `receiver.`, when this file says what the receiver is. */
+async function memberFallback(ctx: CompletionContext): Promise<CompletionResult | null> {
+  const tail = memberReceiver(ctx);
+  if (!tail) return null;
+  const doc = docContext(ctx);
+  if (!doc) return null;
+  // The receiver node itself: the same lookup Go to Declaration uses.
+  const dot = ctx.pos - tail.typed.length - 1;
+  const pos = offsetToPos(ctx.state.doc, Math.max(0, dot - 1));
+  const at = await structure.nodeAt(doc.doc, { start: pos, end: pos });
+  const origin = await memberOrigin(doc, ctx.state.doc, at);
+  if (tail.receiver === "self") {
+    // `self.` states its own class, which no assignment in this file has to.
+    const cls = enclosingClassName(ctx.state.doc.toString(), ctx.pos, doc.language);
+    if (!cls) return null;
+    const members = await classMembersByName(doc.path, cls);
+    return members ? toCompletionResult(members, tail.from, tail.typed) : null;
+  }
+  const members = await membersFor(origin, {
+    classMembers: (name) => classMembersByName(doc.path, name),
+    fileOfModule: (module) => outlineOf(resolveModule(projectRootOf(doc.path), module)),
+  });
+  if (!members) return null;
+  return toCompletionResult(members, tail.from, tail.typed);
 }
 
 export function makeCompletion(item: CompletionItem, req: RequestContext): LspCompletion {
@@ -389,14 +465,14 @@ export function makeCompletion(item: CompletionItem, req: RequestContext): LspCo
 }
 
 /**
- * Sources other features contribute via the `openideaCompletion` language-data
+ * Sources other features contribute via the `pyforgeCompletion` language-data
  * key (live templates, postfix, SQL). Results starting where the first one
  * does are merged into one list. Options may carry `icon` (an icon name, `null`
  * for none) and `typeText` (the right-aligned type column), like LSP items.
  */
 const contributedSource: CompletionSource = async (ctx) => {
   const results: CompletionResult[] = [];
-  for (const source of ctx.state.languageDataAt<CompletionSource>("openideaCompletion", ctx.pos)) {
+  for (const source of ctx.state.languageDataAt<CompletionSource>("pyforgeCompletion", ctx.pos)) {
     const result = await source(ctx);
     if (result) results.push(result);
   }
@@ -547,12 +623,12 @@ export function matchesCase(label: string, typed: string, mode: string): boolean
 
 /**
  * A source another feature restricts the lookup to, via the
- * `openideaExclusiveCompletion` language-data key (`(state) => source | null`;
+ * `pyforgeExclusiveCompletion` language-data key (`(state) => source | null`;
  * ⌘J's live templates).
  */
 function exclusiveSource(ctx: CompletionContext): CompletionSource | null {
   type Provider = (state: CompletionContext["state"]) => CompletionSource | null;
-  for (const f of ctx.state.languageDataAt<Provider>("openideaExclusiveCompletion", ctx.pos)) {
+  for (const f of ctx.state.languageDataAt<Provider>("pyforgeExclusiveCompletion", ctx.pos)) {
     const source = f(ctx.state);
     if (source) return source;
   }

@@ -87,7 +87,7 @@ async fn database_calls_enforce_grants_trust_ownership_and_uninstall_lifetime() 
     let source = f.host.project("main").unwrap().db.plugin_source(ID, "local").unwrap();
     let store = ide_db::secrets::SecretStore::new(f._tmp.path().join("data/db-passwords.json"), &f.root);
     assert_eq!(store.get(&source.id).as_deref(), Some("never-on-disk"));
-    let file = f.root.join(".openidea/data-sources.toml");
+    let file = f.root.join(".pyforge/data-sources.toml");
     assert!(!std::fs::read_to_string(&file).unwrap().contains("never-on-disk"));
     for command in ["remove", "connect"] {
         assert!(f.run(command, Some("foreign")).is_err());

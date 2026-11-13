@@ -22,7 +22,7 @@ class BookmarkMarker extends GutterMarker {
   override toDOM() {
     if (this.mnemonic) {
       const el = document.createElement("span");
-      el.className = "cm-openidea-bookmarkMnemonic";
+      el.className = "cm-pyforge-bookmarkMnemonic";
       el.textContent = this.mnemonic;
       el.setAttribute("aria-label", `Bookmark ${this.mnemonic}`);
       return el;
@@ -32,7 +32,7 @@ class BookmarkMarker extends GutterMarker {
     svg.setAttribute("width", "11");
     svg.setAttribute("height", "11");
     svg.setAttribute("aria-hidden", "true");
-    svg.classList.add("cm-openidea-bookmark");
+    svg.classList.add("cm-pyforge-bookmark");
     const path = document.createElementNS(SVG_NS, "path");
     path.setAttribute("d", "M7 4h10v16l-5-4-5 4z");
     svg.appendChild(path);
@@ -155,7 +155,7 @@ export function bookmarkGutter(path: string, toggle: (line: number) => void): Ex
     field,
     sync,
     gutter({
-      class: "cm-openidea-bookmarks",
+      class: "cm-pyforge-bookmarks",
       markers: (v) => v.state.field(field),
       initialSpacer: () => spacer,
     }),
@@ -164,19 +164,19 @@ export function bookmarkGutter(path: string, toggle: (line: number) => void): Ex
 }
 
 const theme = EditorView.baseTheme({
-  ".cm-openidea-bookmarks .cm-gutterElement": {
+  ".cm-pyforge-bookmarks .cm-gutterElement": {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "0 2px",
   },
-  ".cm-openidea-bookmark": {
+  ".cm-pyforge-bookmark": {
     fill: "none",
     stroke: "var(--accent)",
     strokeWidth: "2",
     strokeLinejoin: "round",
   },
-  ".cm-openidea-bookmarkMnemonic": {
+  ".cm-pyforge-bookmarkMnemonic": {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",

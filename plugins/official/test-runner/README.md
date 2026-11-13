@@ -17,7 +17,7 @@ Build from the repository root:
 ```sh
 plugins/build.sh official/test-runner
 cargo test --manifest-path plugins/official/test-runner/Cargo.toml
-cargo run -p ide-host --bin openidea-plugin -- check plugins/official/test-runner
+cargo run -p ide-host --bin pyforge-plugin -- check plugins/official/test-runner
 ```
 
 Install the built package folder through Settings › Plugins › Install from

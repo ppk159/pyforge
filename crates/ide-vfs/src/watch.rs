@@ -908,7 +908,7 @@ mod tests {
     fn atomic_save_temp_files_are_not_reported() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().canonicalize().unwrap();
-        let temp = root.join(".a.py.openidea-tmp-42-0");
+        let temp = root.join(".a.py.pyforge-tmp-42-0");
         std::fs::write(&temp, "x").unwrap();
         std::fs::write(root.join("a.py"), "x").unwrap();
         let filter = EventFilter::new(root.clone(), &[]);

@@ -167,11 +167,15 @@ describe("detachTab", () => {
     },
   );
 
+  // The project root is passed so the new window shares its index, language
+  // servers and documents; the backend marks it a tab window (no Project tree,
+  // no project name in the title). A file outside every project still becomes
+  // a plain LightEdit window.
   it.each([
-    ["C:\\project\\a.ts", ["C:/project"], "C:/project"],
-    ["C:\\other\\a.ts", ["C:/project", "C:/other"], "C:/project"],
-    ["C:\\project-other\\a.ts", ["C:/project"], null],
-  ])("routes %s by workspace containment", async (file, projects, expected) => {
+    [String.raw`C:\project\a.ts`, ["C:/project"], "C:/project"],
+    [String.raw`C:\other\a.ts`, ["C:/project", "C:/other"], "C:/project"],
+    [String.raw`C:\project-other\a.ts`, ["C:/project"], null],
+  ])("shares %s through the project that contains it", async (file, projects, expected) => {
     useProject.setState({ project: { root: "C:/project", workspace: { projects } } as never });
     ctrl = new EditorController(createMemoryBackend({ [file]: "text\n" }));
     ctrl.start();

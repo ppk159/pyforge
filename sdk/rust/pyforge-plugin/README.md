@@ -1,11 +1,11 @@
 # Rust plugin SDK
 
 The Rust API is documented by `cargo doc`. Web pages shipped alongside a Rust
-component use `window.openidea` rather than Rust imports.
+component use `window.pyforge` rather than Rust imports.
 
 API 1.3 adds `Event::FilesChanged(FilesChanged)` for debounced external file
 creation, modification and removal in open projects. Declare
-`engines.openidea = "^1.3"`, the `events` capability and
+`engines.pyforge = "^1.3"`, the `events` capability and
 `activation = ["on-event:files-changed"]`, then handle the typed event in
 `Plugin::handle_events`. Use `host::subscribe_paths("files-changed", &["config/**"])`
 to receive only matching project-relative paths in each category. An empty
@@ -17,7 +17,7 @@ See [the event contract](../../../plugins/README.md#events)
 and the [real Wasm fixture](../../../crates/ide-plugin/tests/fixtures/files-events).
 
 API 1.3 adds capability-gated interactive PTYs to that web bridge. Declare
-`engines.openidea = "^1.3"` and `process:<program>` in `plugin.toml`, then send
+`engines.pyforge = "^1.3"` and `process:<program>` in `plugin.toml`, then send
 `pty-spawn`, `pty-input`, `pty-resize` and `pty-kill` JSON strings using
 `openidea.postMessage`. Consume `pty-data` and acknowledge its `sequence` using
 `pty-ack`; handle `pty-exit` and `pty-error` through `openidea.onMessage`.
@@ -29,7 +29,7 @@ end with its view or plugin. There is no new WIT import for this API.
 
 API 1.3 also answers Find Usages and Rename from `DocumentIndexer` definitions
 and references. Existing indexers work without another export; declare
-`engines.openidea = "^1.3"` when requiring these host features. Each anchor must
+`engines.pyforge = "^1.3"` when requiring these host features. Each anchor must
 cover exactly the name, using UTF-16 columns. The host merges native results,
 previews indexed renames and applies them as one undoable workspace edit.
 The existing `project.read` capability and trusted-project boundary apply.
@@ -39,7 +39,7 @@ and [the minimal fixture](../../../crates/ide-plugin/tests/fixtures/indexer).
 API 1.3 also adds diagnostics for unsaved documents. Declare
 `kinds = ["diagnostics"]` and the supported `languages` under
 `[[contributes.providers]]`, implement
-`openidea_plugin::diagnostics::DiagnosticsProvider`, and export it with
+`pyforge_plugin::diagnostics::DiagnosticsProvider`, and export it with
 `register_plugin!(MyPlugin, diagnostics)`. The host supplies versioned text
 after a 300 ms debounce, cancels superseded calls, and drops stale answers
 under the editor-provider budget. Ranges use 0-based UTF-16 positions.
@@ -68,7 +68,7 @@ and the [built fixture](../../../crates/ide-plugin/tests/fixtures/web-content).
 ## Multi-page settings (API 1.3)
 
 Declare `[[contributes.settings.pages]]` with `id`, `title`, and `schema` and
-require `engines.openidea = "^1.3"`. The IDE supplies searchable pages, grouped
+require `engines.pyforge = "^1.3"`. The IDE supplies searchable pages, grouped
 fields, string lists and object tables. Values stay plugin-wide; read a table
 with `host::setting("profiles")` and deserialize its JSON array.
 

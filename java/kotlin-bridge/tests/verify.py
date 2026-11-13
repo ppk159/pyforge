@@ -151,7 +151,7 @@ try:
     state(single, 'test-before', False, True)
     def raw(directory):
         entries = ET.parse(directory/'.classpath').getroot()
-        return [ET.tostring(e).decode().strip() for e in entries if not any(a.get('name')=='ai.openidea.kotlin' for a in e.findall('./attributes/attribute'))]
+        return [ET.tostring(e).decode().strip() for e in entries if not any(a.get('name')=='ai.pyforge.kotlin' for a in e.findall('./attributes/attribute'))]
     before = {str(d):raw(d) for d in [single, lib, app]}
     sm = build(single, 'single-build')[0]
     assert not (pathlib.Path(sm['output'])/'probe/TestCaller.class').exists()

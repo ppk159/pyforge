@@ -16,8 +16,8 @@ interface ExceptionState {
   known: Record<string, ExceptionFilter[]>;
 }
 
-const CHOICES_PREFIX = "openidea.debugger.exceptions:";
-const KNOWN_KEY = "openidea.debugger.exceptionFilters";
+const CHOICES_PREFIX = "pyforge.debugger.exceptions:";
+const KNOWN_KEY = "pyforge.debugger.exceptionFilters";
 
 function readJson(key: string): unknown {
   try {

@@ -454,7 +454,7 @@ fn resolved_environment_values_are_saved_in_the_local_file_only() {
     ide_run::save_user_configs(dir.path(), &configs).unwrap();
     let shared = fs::read_to_string(ide_run::user_configs_path(dir.path())).unwrap();
     assert!(shared.contains("Plain") && !shared.contains("Token") && !shared.contains("s3cret"));
-    let local = fs::read_to_string(dir.path().join(".openidea/run.local.toml")).unwrap();
+    let local = fs::read_to_string(dir.path().join(".pyforge/run.local.toml")).unwrap();
     assert!(local.contains("TOKEN = \"s3cret\""), "{local}");
     let loaded = ide_run::load_user_configs(dir.path()).unwrap();
     assert!(loaded.iter().any(|c| c.name == "Token" && c.extras.local && c.env["TOKEN"] == "s3cret"));

@@ -1,5 +1,5 @@
 [package]
-name = "openidea-plugin"
+name = "pyforge-plugin"
 version = "0.1.0"
 edition = "2024"
 description = "SDK for OpenIDEA plugins: typed host API, plugin trait, and a mock host for `cargo test`"

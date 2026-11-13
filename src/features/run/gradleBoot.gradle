@@ -3,7 +3,7 @@
 gradle.projectsEvaluated {
     allprojects {
         tasks.matching { it.name == 'bootRun' }.configureEach { task ->
-            if (System.getProperty('openidea.run.debug') == 'true') {
+            if (System.getProperty('pyforge.run.debug') == 'true') {
                 task.debugOptions.enabled = false
                 task.doFirst {
                     task.setJvmArgs(task.jvmArgs.findAll {

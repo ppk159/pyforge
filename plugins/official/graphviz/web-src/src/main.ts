@@ -208,6 +208,6 @@ function start(bridge: OpenideaBridge) {
   });
 }
 
-const bridge = window.openidea;
+const bridge = window.pyforge;
 if (bridge) start(bridge);
 else document.body.textContent = "This page runs inside OpenIDEA.";

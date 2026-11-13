@@ -49,7 +49,7 @@ export function mapScope(scope: FindScope, changes: ChangeDesc): FindScope | nul
   return to > from ? { from, to } : null;
 }
 
-const scopeDeco = Decoration.mark({ class: "cm-openidea-findScope" });
+const scopeDeco = Decoration.mark({ class: "cm-pyforge-findScope" });
 
 export const findScope = StateField.define<FindScope | null>({
   create: () => null,
@@ -136,9 +136,9 @@ export const findMarks = StateField.define<number[]>({
     ),
 });
 
-const matchDeco = Decoration.mark({ class: "cm-openidea-findMatch" });
-const currentDeco = Decoration.mark({ class: "cm-openidea-findMatch cm-openidea-findMatch-current" });
-const excludedDeco = Decoration.mark({ class: "cm-openidea-findExcluded" });
+const matchDeco = Decoration.mark({ class: "cm-pyforge-findMatch" });
+const currentDeco = Decoration.mark({ class: "cm-pyforge-findMatch cm-pyforge-findMatch-current" });
+const excludedDeco = Decoration.mark({ class: "cm-pyforge-findExcluded" });
 const MAX_VISIBLE = 2000;
 
 function buildHighlights(view: EditorView): DecorationSet {

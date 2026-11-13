@@ -96,7 +96,7 @@ fn install_50(plugins: &Path, work: &Path) {
         std::fs::write(
             dir.join("plugin.toml"),
             format!(
-                "id = \"bench.static{i}\"\nname = \"Static {i}\"\nversion = \"1.0.0\"\nengines.openidea = \"^1.0\"\n\
+                "id = \"bench.static{i}\"\nname = \"Static {i}\"\nversion = \"1.0.0\"\nengines.pyforge = \"^1.0\"\n\
                  [[contributes.commands]]\nid = \"a\"\ntitle = \"Static {i}: A\"\nwhen = \"editorLang == rust\"\n"
             ),
         )

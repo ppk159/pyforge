@@ -145,11 +145,11 @@ export interface PluginsBackend {
     onError: (message: string) => void,
     onExit: (code: number | null) => void,
   ): () => void;
-  /** The URL of a web view's page (`web = …`), under the `openidea-plugin` scheme. */
+  /** The URL of a web view's page (`web = …`), under the `pyforge-plugin` scheme. */
   webPageUrl(pluginId: string, view: string): Promise<string>;
-  /** Save dialog for a web view's `openidea.saveFile`; the path written, or `null` when cancelled. */
+  /** Save dialog for a web view's `pyforge.saveFile`; the path written, or `null` when cancelled. */
   saveWebFile(name: string, filters: FileFilter[] | undefined, bytes: Uint8Array): Promise<string | null>;
-  /** Open dialog for a web view's `openidea.openFile`; `null` when cancelled. */
+  /** Open dialog for a web view's `pyforge.openFile`; `null` when cancelled. */
   openWebFile(filters: FileFilter[] | undefined): Promise<{ name: string; data: Uint8Array } | null>;
   /** Which of a plugin's declared secrets are stored (values never come back). */
   secrets(pluginId: string): Promise<PluginSecretState[]>;
@@ -172,12 +172,12 @@ export interface FileFilter {
 }
 
 /**
- * `path` under the `openidea-plugin` scheme, as the platform's webview spells
+ * `path` under the `pyforge-plugin` scheme, as the platform's webview spells
  * custom schemes (WebView2 maps them onto `http://<scheme>.localhost`).
  */
 export function webSchemeUrl(path: string, windows = /windows/i.test(navigator.userAgent)): string {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return windows ? `http://openidea-plugin.localhost/${encoded}` : `openidea-plugin://localhost/${encoded}`;
+  return windows ? `http://pyforge-plugin.localhost/${encoded}` : `pyforge-plugin://localhost/${encoded}`;
 }
 
 function toBase64(bytes: Uint8Array): string {

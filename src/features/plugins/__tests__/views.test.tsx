@@ -61,7 +61,7 @@ describe("view helpers", () => {
     expect(doc).toContain(`content="${FRAME_CSP}"`);
     expect(FRAME_CSP).toContain("default-src 'none'");
     expect(FRAME_CSP).not.toMatch(/https?:|connect-src/);
-    expect(doc).toContain("window.openidea = Object.freeze");
+    expect(doc).toContain("window.pyforge = Object.freeze");
     expect(doc.indexOf("Content-Security-Policy")).toBeLessThan(doc.indexOf("<p>hi</p>"));
   });
 
@@ -75,9 +75,9 @@ describe("view helpers", () => {
       root.dataset.theme = "light";
       const light = frameTheme();
       expect(light.dark).toBe(false);
-      expect(light.vars["--openidea-fg"]).toBe("rgb(17, 34, 51)");
-      expect(light.vars["--openidea-font-ui"]).toBe("Inter, sans-serif");
-      expect(light.vars).not.toHaveProperty("--openidea-font-mono");
+      expect(light.vars["--pyforge-fg"]).toBe("rgb(17, 34, 51)");
+      expect(light.vars["--pyforge-font-ui"]).toBe("Inter, sans-serif");
+      expect(light.vars).not.toHaveProperty("--pyforge-font-mono");
       root.dataset.theme = "dark";
       root.dataset.contrast = "high";
       expect(frameTheme().dark).toBe(true);
@@ -90,7 +90,7 @@ describe("view helpers", () => {
   });
 
   it("puts the theme into the frame document without letting a value end the script", () => {
-    const doc = frameDocument("<p>hi</p>", { dark: true, vars: { "--openidea-fg": "</script><b>" } });
+    const doc = frameDocument("<p>hi</p>", { dark: true, vars: { "--pyforge-fg": "</script><b>" } });
     expect(doc).toContain('<html data-theme="dark">');
     expect(doc).not.toContain("</script><b>");
     expect(doc).toContain("\\u003c/script>");
@@ -99,7 +99,7 @@ describe("view helpers", () => {
   it("applies posted themes inside the frame, replacing the previous variables", () => {
     const doc = frameDocument("", {
       dark: false,
-      vars: { "--openidea-fg": "rgb(1, 2, 3)", "--openidea-accent": "red" },
+      vars: { "--pyforge-fg": "rgb(1, 2, 3)", "--pyforge-accent": "red" },
     });
     const script = /<script>([\s\S]*)<\/script>/.exec(doc)![1]!;
     const root = document.documentElement;
@@ -108,23 +108,23 @@ describe("view helpers", () => {
     try {
       new Function(script)();
       const api = (
-        window as unknown as { openidea: { theme: FrameTheme; onThemeChange(fn: (t: FrameTheme) => void): void } }
-      ).openidea;
-      expect(root.style.getPropertyValue("--openidea-fg")).toBe("rgb(1, 2, 3)");
+        window as unknown as { pyforge: { theme: FrameTheme; onThemeChange(fn: (t: FrameTheme) => void): void } }
+      ).pyforge;
+      expect(root.style.getPropertyValue("--pyforge-fg")).toBe("rgb(1, 2, 3)");
       expect(api.theme.dark).toBe(false);
       api.onThemeChange((t) => seen.push(t));
       // jsdom's postMessage has no `source`, so dispatch the event as the parent would.
       const send = (t: unknown) =>
         window.dispatchEvent(new MessageEvent("message", { data: { tag: FRAME_TAG, theme: t }, source: window }));
-      send({ dark: true, vars: { "--openidea-fg": "rgb(9, 9, 9)", "--not-ours": "x" } });
+      send({ dark: true, vars: { "--pyforge-fg": "rgb(9, 9, 9)", "--not-ours": "x" } });
       expect(root.dataset.theme).toBe("dark");
-      expect(root.style.getPropertyValue("--openidea-fg")).toBe("rgb(9, 9, 9)");
-      expect(root.style.getPropertyValue("--openidea-accent")).toBe("");
+      expect(root.style.getPropertyValue("--pyforge-fg")).toBe("rgb(9, 9, 9)");
+      expect(root.style.getPropertyValue("--pyforge-accent")).toBe("");
       expect(root.style.getPropertyValue("--not-ours")).toBe("");
       expect(seen).toHaveLength(1);
     } finally {
-      for (const p of ["--openidea-fg", "--openidea-accent"]) root.style.removeProperty(p);
-      delete (window as unknown as { openidea?: unknown }).openidea;
+      for (const p of ["--pyforge-fg", "--pyforge-accent"]) root.style.removeProperty(p);
+      delete (window as unknown as { pyforge?: unknown }).pyforge;
       if (before === undefined) delete root.dataset.theme;
       else root.dataset.theme = before;
     }

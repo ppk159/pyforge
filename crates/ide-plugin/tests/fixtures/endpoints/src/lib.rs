@@ -1,5 +1,5 @@
-use openidea_plugin::endpoints::{Endpoint, EndpointsProvider};
-use openidea_plugin::{Error, Invocation, Location, Plugin, Position, Range, register_plugin};
+use pyforge_plugin::endpoints::{Endpoint, EndpointsProvider};
+use pyforge_plugin::{Error, Invocation, Location, Plugin, Position, Range, register_plugin};
 #[derive(Default)]
 struct Fixture;
 impl Plugin for Fixture {

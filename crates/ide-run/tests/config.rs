@@ -50,7 +50,7 @@ fn round_trip() {
     let dir = tempfile::tempdir().unwrap();
     let configs = sample();
     save_user_configs(dir.path(), &configs).unwrap();
-    assert!(dir.path().join(".openidea/run.toml").is_file());
+    assert!(dir.path().join(".pyforge/run.toml").is_file());
     assert_eq!(load_user_configs(dir.path()).unwrap(), configs);
 
     // Saving a detected config persists it as a user config.
@@ -149,9 +149,9 @@ fn extras_round_trip_and_local_file() {
 
     let project = fs::read_to_string(user_configs_path(dir.path())).unwrap();
     assert!(!project.contains("\"user:tests\"\n"), "{project}");
-    let private = fs::read_to_string(dir.path().join(".openidea/run.local.toml")).unwrap();
+    let private = fs::read_to_string(dir.path().join(".pyforge/run.local.toml")).unwrap();
     assert!(private.contains("id = \"user:tests\""), "{private}");
-    let ignore = fs::read_to_string(dir.path().join(".openidea/.gitignore")).unwrap();
+    let ignore = fs::read_to_string(dir.path().join(".pyforge/.gitignore")).unwrap();
     assert!(ignore.lines().any(|l| l == "/run.local.toml"), "{ignore}");
 
     // Making it a project file moves it back.
@@ -159,7 +159,7 @@ fn extras_round_trip_and_local_file() {
     moved[2].extras.local = false;
     save_user_configs(dir.path(), &moved).unwrap();
     assert_eq!(load_user_configs(dir.path()).unwrap(), moved);
-    assert!(!fs::read_to_string(dir.path().join(".openidea/run.local.toml")).unwrap().contains("user:tests"));
+    assert!(!fs::read_to_string(dir.path().join(".pyforge/run.local.toml")).unwrap().contains("user:tests"));
 
     // Templates share run.toml without disturbing configurations.
     let mut template = sample().remove(1);
@@ -232,7 +232,7 @@ fn suppression_round_trip_and_resaving() {
     restored.extras.local = true;
     save_user_configs(dir.path(), &[restored]).unwrap();
     assert_eq!(load_suppressed_config_ids(dir.path()).unwrap(), vec![ids[1].clone()]);
-    assert!(fs::read_to_string(dir.path().join(".openidea/.gitignore")).unwrap().contains("/run.local.toml"));
+    assert!(fs::read_to_string(dir.path().join(".pyforge/.gitignore")).unwrap().contains("/run.local.toml"));
 }
 
 #[test]

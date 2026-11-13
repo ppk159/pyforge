@@ -30,8 +30,8 @@ import { editorPrefs, lineCommentStyleFor, type EditorExtras } from "@/platform/
 import { BUNDLED_MONO_FAMILY, monoFontFamily } from "@/platform/fonts";
 import { editorContributions, HEAVY_LIMIT, type EditorDocContext } from "@/editor/api";
 import { distractionFreeWidth, isDistractionFree } from "@/workbench/distractionFree";
-import { openideaHighlightStyle } from "./highlight";
-import { openideaTheme } from "./theme";
+import { pyforgeHighlightStyle } from "./highlight";
+import { pyforgeTheme } from "./theme";
 import { caretRowHighlight } from "./caretRow";
 import { changeLane, overviewLane } from "./lanes";
 import { foldingExtension } from "./folding";
@@ -180,21 +180,21 @@ export function fontExtension(settings: EditorSettings | undefined): Extension {
   const family = settings?.fontFamily;
   const fallback = prefs.fallbackFont.trim();
   if ((family && family !== BUNDLED_MONO_FAMILY) || fallback) {
-    vars.push(`--openidea-editor-font: ${monoFontFamily(family, fallback, "var(--font-mono)")}`);
+    vars.push(`--pyforge-editor-font: ${monoFontFamily(family, fallback, "var(--font-mono)")}`);
   }
   if (settings?.fontSize)
     vars.push(
-      `--openidea-editor-font-size: ${settings.fontSize}px`,
-      `--openidea-editor-base-size: ${settings.fontSize}px`,
+      `--pyforge-editor-font-size: ${settings.fontSize}px`,
+      `--pyforge-editor-base-size: ${settings.fontSize}px`,
     );
   if (settings?.lineHeight)
     vars.push(
-      `--openidea-editor-line-height: ${settings.lineHeight}px`,
-      `--openidea-editor-base-line: ${settings.lineHeight}px`,
+      `--pyforge-editor-line-height: ${settings.lineHeight}px`,
+      `--pyforge-editor-base-line: ${settings.lineHeight}px`,
     );
   const attrs: Record<string, string> = {};
   if (vars.length) attrs.style = vars.join("; ");
-  if (prefs.ligatures) attrs.class = "cm-openidea-ligatures";
+  if (prefs.ligatures) attrs.class = "cm-pyforge-ligatures";
   return Object.keys(attrs).length ? EditorView.editorAttributes.of(attrs) : [];
 }
 
@@ -247,7 +247,7 @@ export function lineNumbersExtension(settings: EditorSettings | undefined): Exte
 
 /**
  * Distraction Free Mode: no gutter, text column centred at the configured
- * width (see `cm-openidea-distractionFree` in theme.ts).
+ * width (see `cm-pyforge-distractionFree` in theme.ts).
  */
 export function distractionFreeExtension(
   settings: EditorSettings | undefined,
@@ -256,8 +256,8 @@ export function distractionFreeExtension(
   if (!active) return [];
   const columns = distractionFreeWidth(prefsOf(settings).appearance.distractionFreeWidth);
   return EditorView.editorAttributes.of({
-    class: "cm-openidea-distractionFree",
-    style: `--openidea-df-columns: ${columns}`,
+    class: "cm-pyforge-distractionFree",
+    style: `--pyforge-df-columns: ${columns}`,
   });
 }
 
@@ -341,7 +341,7 @@ export function baseExtensions(o: SetupOptions): Extension {
   return [
     tooltipSpace,
     compartments.font.of(fontExtension(o.settings)),
-    openideaTheme,
+    pyforgeTheme,
     compartments.lineNumbers.of(lineNumbersExtension(o.settings)),
     // New UI order: numbers | contributed icon gutters | VCS bar | fold chevrons.
     Prec.lowest(changeLane),
@@ -363,7 +363,7 @@ export function baseExtensions(o: SetupOptions): Extension {
     clipboardFilesExtension,
     indentOnInput(),
     syntaxHighlightField,
-    syntaxHighlighting(openideaHighlightStyle),
+    syntaxHighlighting(pyforgeHighlightStyle),
     closeBrackets(),
     caretRowHighlight,
     fontZoom,

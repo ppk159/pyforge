@@ -3,5 +3,5 @@
 
 #[test]
 fn export_bindings() {
-    openidea_lib::export_bindings(&openidea_lib::specta_builder());
+    pyforge_lib::export_bindings(&pyforge_lib::specta_builder());
 }

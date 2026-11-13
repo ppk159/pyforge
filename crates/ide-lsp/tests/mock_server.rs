@@ -5384,7 +5384,7 @@ async fn injected_documents_route_and_resolve_without_exposing_virtual_files() {
         h.mgr.set_injections(host, 2, vec![]);
         eventually(|| diagnostics().is_empty()).await;
         assert!(h.events.lock().iter().all(
-            |e| !matches!(e,IdeEvent::Diagnostics {path,..} if path.0.to_string_lossy().contains(".openidea-injected-"))
+            |e| !matches!(e,IdeEvent::Diagnostics {path,..} if path.0.to_string_lossy().contains(".pyforge-injected-"))
         ));
         h.mgr.did_close(host);
         eventually(|| state.docs.lock().is_empty()).await;

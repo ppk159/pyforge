@@ -6,10 +6,10 @@
 //! Large files: the IDE asks only for the rows it shows; the parse of the
 //! last document version is kept, so scrolling doesn't parse again.
 
-use openidea_plugin::host;
-use openidea_plugin::text::position;
-use openidea_plugin::views::{Body, Button, Table, View, ViewEvent, Viewport, Views};
-use openidea_plugin::{Error, Invocation, Plugin, Range, TextEdit, register_plugin};
+use pyforge_plugin::host;
+use pyforge_plugin::text::position;
+use pyforge_plugin::views::{Body, Button, Table, View, ViewEvent, Viewport, Views};
+use pyforge_plugin::{Error, Invocation, Plugin, Range, TextEdit, register_plugin};
 use std::ops::Range as Span;
 
 /// One record: the byte spans of its fields and of the whole record (without
@@ -247,7 +247,7 @@ register_plugin!(CsvEditor, views);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
 
     const DATA: &str = "name,age,city\nAda,36,London\n\"Lovelace, A.\",\"say \"\"hi\"\"\",\"multi\nline\"\nBob,40\n";
 

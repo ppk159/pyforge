@@ -1,4 +1,4 @@
-use openidea_plugin::{Position, Range, language_features::*, mock::MockHost};
+use pyforge_plugin::{Position, Range, language_features::*, mock::MockHost};
 struct Features;
 impl LanguageFeatures for Features {
     fn signature_help(&mut self, d: &Document, _: Position) -> Option<SignatureHelp> {

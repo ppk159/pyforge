@@ -152,6 +152,121 @@ describe("usageRole / filterSymbols", () => {
       "/z.kt",
     ]);
   });
+
+  it("puts the members of the known container first", () => {
+    // `factory_dao.query()` in a file that says `factory_dao = FactoryDao()`: the
+    // method on that class beats the same name on any other class, even in another
+    // file of the same extension.
+    const t = (path: string, container: string | null) => ({ path, container, range: r(0, 0, 1) });
+    const ranked = fb.rankTargets(
+      [t("/other.py", "OtherDao"), t("/elsewhere.py", null), t("/same.py", "FactoryDao")],
+      "/same.py",
+      "FactoryDao",
+    );
+    // A method of the class this call is demonstrably on, then — before anything the
+    // file merely happens to contain — the rest.
+    expect(ranked.map((x) => x.container)).toEqual(["FactoryDao", "OtherDao", null]);
+  });
+
+  it("reads the class out of `x = Class(...)` and refuses every other shape", () => {
+    const text = Text.of([
+      "factory_dao = FactoryDao()",
+      "typed: FactoryDao = FactoryDao()",
+      "made = build_dao()",
+      "n = 1",
+      "self.dao = Inner()",
+    ]);
+    // The occurrences of `factory_dao` / `typed` / `made` are all plain names here.
+    const at = (line: number, from: number, to: number) => [{ range: r(line, from, to), qualified: false }];
+    expect(fb.assignedClassName(text, at(0, 0, 11), "factory_dao")).toBe("FactoryDao");
+    expect(fb.assignedClassName(text, at(1, 0, 5), "typed")).toBe("FactoryDao");
+    // A call result says nothing about what it is.
+    expect(fb.assignedClassName(text, at(2, 0, 4), "made")).toBeNull();
+    // Not a call at all.
+    expect(fb.assignedClassName(text, at(3, 0, 1), "n")).toBeNull();
+    // A qualifier is another object's member, not this file's binding.
+    expect(fb.assignedClassName(text, [{ range: r(4, 9, 12), qualified: true }], "dao")).toBeNull();
+    // Nothing assigns it in this file.
+    expect(fb.assignedClassName(text, [], "unknown")).toBeNull();
+  });
+
+  it("reads the module a receiver was imported from", () => {
+    const text = Text.of([
+      "from a.b.service.plan_service import plan_service",
+      "from a.b import util as u",
+      "import a.b.helpers",
+      "import a.b.deep as deep",
+    ]);
+    // `from a.b import c` may name a module or a name inside a.b: both files are offered.
+    expect(fb.importedModulePaths(text, "plan_service")).toEqual([
+      "a/b/service/plan_service/plan_service.py",
+      "a/b/service/plan_service.py",
+    ]);
+    expect(fb.importedModulePaths(text, "u")).toEqual(["a/b/util.py", "a/b.py"]);
+    // `import a.b.helpers` binds `a`, not `helpers` — that is what Python does.
+    expect(fb.importedModulePaths(text, "helpers")).toEqual([]);
+    expect(fb.importedModulePaths(text, "a")).toEqual(["a/b/helpers.py"]);
+    expect(fb.importedModulePaths(text, "deep")).toEqual(["a/b/deep.py"]);
+    expect(fb.importedModulePaths(text, "missing")).toEqual([]);
+  });
+
+  it("puts a definition from the imported module ahead of a same-named one in this file", () => {
+    // `plan_service.get_plan_detail()` in controller.py, where the file also defines a
+    // `get_plan_detail` of its own with a different signature: the imported module wins.
+    const t = (path: string, container: string | null) => ({ path, container, range: r(0, 0, 1) });
+    const ranked = fb.rankTargets(
+      [t("/ctl/controller.py", "PlanController"), t("/svc/plan_service.py", "PlanService")],
+      "/ctl/controller.py",
+      null,
+      ["svc/plan_service.py"],
+    );
+    expect(ranked.map((x) => x.path)).toEqual(["/svc/plan_service.py", "/ctl/controller.py"]);
+  });
+
+  it("reads the names a file imports, and where it binds them", () => {
+    const text = Text.of([
+      "from a.b.service import plan_service, other as alias",
+      "from a.b import (",
+      "    one,",
+      "    two as second,",
+      ")",
+      "import os",
+      "import a.b.deep as deep",
+    ]);
+    const bindings = fb.importedBindings(text);
+    expect(bindings.get("plan_service")).toBe(0);
+    expect(bindings.get("alias")).toBe(0);
+    // `import os` binds `os`; `import a.b.deep as deep` binds `deep`.
+    expect(bindings.get("os")).toBe(5);
+    expect(bindings.get("deep")).toBe(6);
+    // A plain `import a.b.deep` binds `a`, not `deep`.
+    expect(bindings.get("other")).toBeUndefined();
+  });
+
+  it("highlights an imported name's binding and its plain uses", () => {
+    const occ = (line: number, from: number, to: number, qualified = false) => ({
+      range: r(line, from, to),
+      qualified,
+      role: "other" as const,
+    });
+    const items = fb.importedHighlights(
+      [
+        occ(0, 14, 17), // the binding
+        occ(1, 0, 3), // svc.run
+        occ(2, 4, 7), // svc.id
+        occ(2, 0, 1, true), // a member access, not this name
+      ],
+      0,
+    );
+    expect(items.map((i) => i.kind)).toEqual(["write", "text", "text"]);
+    expect(items.map((i) => i.range.start.line)).toEqual([0, 1, 2]);
+  });
+
+  it("leaves the order alone when no container is known", () => {
+    const t = (path: string, container: string | null) => ({ path, container, range: r(0, 0, 1) });
+    const ranked = fb.rankTargets([t("/a.py", "B"), t("/b.py", "A")], "/me.py");
+    expect(ranked.map((x) => x.path)).toEqual(["/a.py", "/b.py"]);
+  });
 });
 
 describe("declarationFallback", () => {

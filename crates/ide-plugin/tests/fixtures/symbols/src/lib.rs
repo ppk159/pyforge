@@ -1,6 +1,6 @@
-use openidea_plugin::host::{self, Project};
-use openidea_plugin::providers::{Document, Providers};
-use openidea_plugin::{Error, Invocation, Location, Plugin, Position, register_plugin};
+use pyforge_plugin::host::{self, Project};
+use pyforge_plugin::providers::{Document, Providers};
+use pyforge_plugin::{Error, Invocation, Location, Plugin, Position, register_plugin};
 
 #[derive(Default)]
 struct Fixture {

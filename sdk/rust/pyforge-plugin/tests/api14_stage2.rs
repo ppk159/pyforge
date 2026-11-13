@@ -1,4 +1,4 @@
-use openidea_plugin::{Decoration, Error, FileDecoration, Range, TextQuery, TextSearch, host, mock::MockHost};
+use pyforge_plugin::{Decoration, Error, FileDecoration, Range, TextQuery, TextSearch, host, mock::MockHost};
 
 #[test]
 fn command_permission_distinguishes_own_commands() {
@@ -24,7 +24,7 @@ fn workbench_wrappers_enforce_grants_and_editor_ranges_need_no_grant() {
     let ctx = mock.invocation();
     let editor = ctx.editor().unwrap();
     editor
-        .set_selections(&[Range::new(openidea_plugin::Position::new(0, 2), openidea_plugin::Position::new(0, 4))])
+        .set_selections(&[Range::new(pyforge_plugin::Position::new(0, 2), pyforge_plugin::Position::new(0, 4))])
         .unwrap();
     editor.reveal(Range::default()).unwrap();
     assert_eq!(mock.revealed_ranges(), [Range::default()]);

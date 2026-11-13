@@ -118,7 +118,7 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
               type="button"
               className={styles.link}
               onClick={() =>
-                void openExternalUrl("https://github.com/l0ng-ai/openidea/issues/new/choose").catch(() => {})
+                void openExternalUrl("https://github.com/l0ng-ai/pyforge/issues/new/choose").catch(() => {})
               }
             >
               {t("app.about.reportIssue")}

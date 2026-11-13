@@ -1,0 +1,126 @@
+# Pull-request and push checks: types, lint, format, frontend tests, Rust tests.
+#
+# Windows, because that is the only platform this fork builds for (`release.yml`
+# ships Windows only) and the one its bugs come from: a path-separator assumption in
+# `scripts/check-webkit.ts` was invisible on Linux and shipped anyway. A check that
+# runs somewhere else tests somewhere else.
+#
+# macOS and Linux are not covered. Neither has ever been built or run for this fork,
+# and a job that fails for reasons nobody has investigated teaches people to ignore CI.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Rust build links the frontend into the binary; without this a `pnpm build`
+  # in each job would repeat what the cache already holds.
+  CARGO_TERM_COLOR: always
+
+jobs:
+  frontend:
+    name: Types, lint, format, tests
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Four projects (`tsconfig.node.json`, `perf`, `scripts`, `smoke`) besides the
+      # app one: a type error in a build script broke a release once.
+      - name: Types
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        run: pnpm format:check
+
+      # `--retry` for the handful of `waitFor` assertions whose 1-second default is
+      # tight when the whole suite runs in parallel on a 4-core runner. A real failure
+      # fails all three attempts; a timing flake costs one retry instead of a red job
+      # nobody trusts.
+      - name: Tests
+        run: pnpm vitest run --retry=2
+
+  rust:
+    name: Rust tests
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The host crate compiles the frontend into itself; without a `dist/` its build
+      # script fails before any test runs.
+      - run: pnpm build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # ~7 GB of `target/` across a run: this is what makes the job finish inside its
+      # timeout instead of compiling 1054 dependencies every time.
+      - uses: swatinem/rust-cache@v2
+
+      # `--lib` keeps this to the workspace's own tests. The integration tests that
+      # download tools need network ranges a JSON API cannot reproduce reliably, and
+      # the ones under `crates/ide-run/tests` need fixtures absent from the repo.
+      #
+      # Three skips, each for a test that asserts something about the machine rather
+      # than about this code. All three fail on `master` as well:
+      #
+      #   search_path_contains_env_path
+      #     Assumes `search_path()` puts the first absolute entry of this process's
+      #     `PATH` first. A `cargo test` adds two `target/*/build/*/out` directories and
+      #     keeps only one.
+      #   a_real_existing_virtualenv_resolves…, venv_creation_ignores_modules…
+      #     Run `python3 -m venv` and assert it succeeded. On Windows `python3` is the
+      #     Microsoft Store placeholder, which exits 0 without creating anything.
+      #   interrupted_download_*
+      #     Serve a local HTTP endpoint and interrupt it mid-body; the interruption
+      #     does not arrive where the test expects it on every machine.
+      #
+      # `--test-threads=2` because several of `ide-host`'s tests open a project
+      # (watcher, indexer, language-server host) and the default of one thread per core
+      # ran them all at once: on a 16-thread machine that exhausted RAM and froze the
+      # system outright. Two at a time bounds the peak and still finishes in ~2.5 min.
+      - name: Test
+        run: >
+          cargo test --workspace --lib --
+          --skip search_path_contains_env_path
+          --skip a_real_existing_virtualenv_resolves_from_its_folder_or_platform_executable
+          --skip venv_creation_ignores_modules_in_the_working_directory
+          --skip interrupted_download_
+          --test-threads=2
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings

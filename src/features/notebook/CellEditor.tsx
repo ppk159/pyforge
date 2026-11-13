@@ -10,8 +10,8 @@ import {
 } from "@codemirror/view";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { openideaTheme } from "@/editor/core/cm/theme";
-import { openideaHighlightStyle } from "@/editor/core/cm/highlight";
+import { pyforgeTheme } from "@/editor/core/cm/theme";
+import { pyforgeHighlightStyle } from "@/editor/core/cm/highlight";
 import { selectionMarks } from "@/editor/core/cm/selectionMarks";
 import { seamlessSelection } from "@/editor/core/cm/selectionLayer";
 import { findLanguageDescription, loadSupport } from "@/editor/core/cm/languages";
@@ -41,8 +41,8 @@ export function CellEditor({
     if (!host.current) return;
     const language = new Compartment();
     const configuration = [
-      openideaTheme,
-      syntaxHighlighting(openideaHighlightStyle),
+      pyforgeTheme,
+      syntaxHighlighting(pyforgeHighlightStyle),
       lineNumbers(),
       drawSelection(),
       selectionMarks,

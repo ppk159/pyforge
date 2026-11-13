@@ -1,12 +1,12 @@
 [package]
-name = "openidea"
-description = "OpenIDEA desktop shell: an open-source IDE inspired by IntelliJ IDEA"
+name = "pyforge"
+description = "PyForge: a Python IDE over the OpenIDEA Rust shell"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "openidea_lib"
+name = "pyforge_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

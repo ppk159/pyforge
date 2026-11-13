@@ -8,7 +8,7 @@ import { useEditorRegistry } from "@/editor/api";
 import { basename, useProject } from "@/platform/project";
 import { useT } from "@/platform/i18n";
 import { ProgressBar } from "@/ui";
-import projectMark from "../../src-tauri/icons/source/openidea-mark.svg";
+import projectMark from "../../src-tauri/icons/source/pyforge-mark.svg";
 import { useDistractionFree } from "./distractionFree";
 import { EditorArea } from "./EditorArea";
 import { OverlayHost } from "./OverlayHost";
@@ -72,13 +72,19 @@ export function Workbench() {
   const banners = useContributions((s) => s.workbenchBanners);
   const project = useProject((s) => s.project);
   const lightEdit = useProject((s) => s.lightEdit);
+  const tabWindow = useProject((s) => s.tabWindow);
   const standaloneTitle = useStandaloneEditor((s) => s.title);
   const openingPath = useProject((s) => s.openingPath);
   const root = project?.root ?? null;
   const distractionFree = useDistractionFree((s) => s.active);
   const mainToolbar = useAppearanceFlag("showMainToolbar");
   const statusBar = useAppearanceFlag("showStatusBar");
-  const frame = project ? styles.framed : lightEdit || standaloneTitle ? styles.lightEditFrame : undefined;
+  const frame =
+    project && !tabWindow
+      ? styles.framed
+      : lightEdit || tabWindow || standaloneTitle
+        ? styles.lightEditFrame
+        : undefined;
 
   return (
     <div
@@ -86,7 +92,12 @@ export function Workbench() {
       style={project ? projectColorVars(project.name) : undefined}
     >
       <div className={styles.content} inert={openingPath !== null} aria-hidden={openingPath ? true : undefined}>
-        {project ? (
+        {project && tabWindow ? (
+          // A tab window shares its project but presents one file: the LightEdit layout
+          // (title bar with the file name, the editor, no stripes or tool windows) over
+          // the shared project, so navigation and refactorings still work.
+          <LightEditFrame />
+        ) : project ? (
           <>
             <TitleBar compact={distractionFree || !mainToolbar} />
             {!distractionFree && <WindowGroupTabs />}

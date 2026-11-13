@@ -1018,7 +1018,7 @@ export function PluginsPage() {
                   onSelect={() => setSelectedId(p.id)}
                 />
               ))}
-              {dev.length > 0 && <ListHeader title="Project (.openidea/plugins)" count={dev.length} />}
+              {dev.length > 0 && <ListHeader title="Project (.pyforge/plugins)" count={dev.length} />}
               {dev.map((p) => (
                 <InstalledRow
                   key={p.id}
@@ -1078,7 +1078,7 @@ export function PluginsPage() {
           ) : (
             <EmptyState className={styles.detailsEmpty} title={loaded ? "No plugin selected" : "Loading…"}>
               <T>Plugins are folders with a</T> <code>plugin.toml</code>
-              <T>. Use the gear menu to install one from disk, or put dev plugins in</T> <code>.openidea/plugins/</code>{" "}
+              <T>. Use the gear menu to install one from disk, or put dev plugins in</T> <code>.pyforge/plugins/</code>{" "}
               <T>inside your project.</T>
             </EmptyState>
           )

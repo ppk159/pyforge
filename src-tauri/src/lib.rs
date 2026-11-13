@@ -184,7 +184,7 @@ pub fn run() {
                     windows::remember_cli_position(&windows, &args, &path);
                     windows.set_launch("main", windows::path_launch(path));
                 }
-                // `openidea diff a.txt b.txt`: the main window opens the pair in the diff viewer.
+                // `pyforge diff a.txt b.txt`: the main window opens the pair in the diff viewer.
                 Some(windows::CliLaunch::Diff(diff)) => {
                     windows.set_launch("main", windows::Launch { diff: Some(Box::new(diff)), ..Default::default() });
                 }

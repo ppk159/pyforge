@@ -13,7 +13,7 @@ interface ReviewModeSettings {
   threads: EditorThreadsOption;
 }
 
-const key = (root: string) => `openidea.github.reviewMode.v1:${root}`;
+const key = (root: string) => `pyforge.github.reviewMode.v1:${root}`;
 const projectRoot = () => useProject.getState().project?.root ?? null;
 
 function loadEnabled(root: string | null): boolean {

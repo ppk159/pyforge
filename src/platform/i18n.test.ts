@@ -22,8 +22,8 @@ afterEach(() => _resetI18nForTests());
 
 describe("formatMessage", () => {
   it("substitutes parameters and leaves unknown ones", () => {
-    expect(formatMessage("Open {name}", { name: "openidea" })).toBe("Open openidea");
-    expect(formatMessage("Open {name} in {where}", { name: "openidea" })).toBe("Open openidea in {where}");
+    expect(formatMessage("Open {name}", { name: "pyforge" })).toBe("Open pyforge");
+    expect(formatMessage("Open {name} in {where}", { name: "pyforge" })).toBe("Open pyforge in {where}");
     expect(formatMessage("plain text")).toBe("plain text");
   });
 
@@ -106,8 +106,8 @@ describe("t / locales", () => {
   });
 
   it("applies params and plurals in the active locale", async () => {
-    expect(t("app.unsaved.body", { count: 1, project: "openidea" })).toBe(
-      "1 file has unsaved changes in openidea. Save before closing?",
+    expect(t("app.unsaved.body", { count: 1, project: "pyforge" })).toBe(
+      "1 file has unsaved changes in pyforge. Save before closing?",
     );
     await setLocale("zh-CN");
     expect(t("app.keymap.count", { count: 1 })).toBe("1 个快捷键");

@@ -62,7 +62,7 @@ fixtures/**/_rv*.py
 # upstream tree has them, so a diff against it stays readable) but not published
 # from this repo.
 #
-# `.github/workflows/release.yml` is this fork's own and is tracked: it is the only
+# `release.yml` and `ci.yml` are this fork's own and are tracked: they are the only
 # reason `.github` appears in the repo at all.
 /.agents/
 /.claude/
@@ -70,4 +70,5 @@ fixtures/**/_rv*.py
 !/.github/workflows/
 /.github/workflows/*
 !/.github/workflows/release.yml
+!/.github/workflows/ci.yml
 /.openidea/

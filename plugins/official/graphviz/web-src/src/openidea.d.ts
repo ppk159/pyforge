@@ -1,4 +1,4 @@
-/** The IDE's frame bridge (`window.openidea`), injected before the page's scripts. */
+/** The IDE's frame bridge (`window.pyforge`), injected before the page's scripts. */
 interface OpenideaDocumentState {
   version: number;
   text: string;

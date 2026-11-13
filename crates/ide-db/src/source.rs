@@ -1,4 +1,4 @@
-//! Data sources: per-project connection settings in `.openidea/data-sources.toml`, and
+//! Data sources: per-project connection settings in `.pyforge/data-sources.toml`, and
 //! global ones (IDEA's Make Global: listed in every project) in `data-sources.toml` of the
 //! app data directory. Passwords never go there: saved ones live in [`crate::secrets`],
 //! the others only in memory for the session.
@@ -497,7 +497,7 @@ mod tests {
             ..Default::default()
         };
         save(tmp.path(), std::slice::from_ref(&s)).unwrap();
-        let text = std::fs::read_to_string(tmp.path().join(".openidea/data-sources.toml")).unwrap();
+        let text = std::fs::read_to_string(tmp.path().join(".pyforge/data-sources.toml")).unwrap();
         assert!(!text.contains("password ="), "{text}");
         assert_eq!(load(tmp.path()).unwrap(), vec![s]);
         assert!(save(tmp.path(), &[DataSource::default()]).is_err());
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn reads_configs_written_before_the_new_settings() {
         let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join(".openidea");
+        let dir = tmp.path().join(".pyforge");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join(FILE),

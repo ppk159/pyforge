@@ -1,4 +1,4 @@
-use openidea_plugin::{Event, EventKind, FilesChanged};
+use pyforge_plugin::{Event, EventKind, FilesChanged};
 
 #[test]
 fn additive_files_changed_payload_is_typed_and_lossless() {
@@ -23,7 +23,7 @@ fn unknown_and_malformed_events_keep_the_original_payload() {
 
 #[test]
 fn mock_filters_files_changed_with_the_events_capability() {
-    use openidea_plugin::{Error, host, mock::MockHost};
+    use pyforge_plugin::{Error, host, mock::MockHost};
     let mock = MockHost::install();
     host::subscribe_paths("files-changed", &["config/*.yaml"]).unwrap();
     assert_eq!(mock.path_subscriptions()["files-changed"], ["config/*.yaml"]);

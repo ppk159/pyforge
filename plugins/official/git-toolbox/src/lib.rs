@@ -3,8 +3,8 @@
 //! instance was reclaimed while idle), and the focused project's branch with
 //! its ahead/behind counts in the status bar.
 
-use openidea_plugin::host::{self, storage};
-use openidea_plugin::{
+use pyforge_plugin::host::{self, storage};
+use pyforge_plugin::{
     Error, Event, Invocation, NotificationLevel, Plugin, Project, RepositoryStatus, StatusItem, register_plugin,
 };
 
@@ -117,7 +117,7 @@ fn fetch(projects: &[Project]) -> Result<usize, Error> {
             }
             Err(Error::Cancelled) => return Err(Error::Cancelled),
             Err(e) => {
-                host::log(openidea_plugin::LogLevel::Warn, &format!("fetch {root}: {e}"));
+                host::log(pyforge_plugin::LogLevel::Warn, &format!("fetch {root}: {e}"));
                 last_error = Some(e);
             }
         }
@@ -166,7 +166,7 @@ register_plugin!(GitToolbox);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::mock::MockHost;
 
     fn status(ahead: u32, behind: u32) -> RepositoryStatus {
         RepositoryStatus {

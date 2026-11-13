@@ -8,9 +8,9 @@
 //! or `.checkstyle.xml`), else the Google or Sun checks chosen with the
 //! commands.
 
-use openidea_plugin::host::{self, storage};
-use openidea_plugin::providers::{CodeAction, Document, Providers};
-use openidea_plugin::{
+use pyforge_plugin::host::{self, storage};
+use pyforge_plugin::providers::{CodeAction, Document, Providers};
+use pyforge_plugin::{
     Diagnostic, Error, Event, Invocation, NotificationLevel, Plugin, Position, Project, Range, Severity, TextEdit,
     register_plugin,
 };
@@ -253,8 +253,8 @@ register_plugin!(Checkstyle, providers);
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
-    use openidea_plugin::ProcessOutput;
-    use openidea_plugin::mock::MockHost;
+    use pyforge_plugin::ProcessOutput;
+    use pyforge_plugin::mock::MockHost;
 
     const REPORT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <checkstyle version="10.17.0">

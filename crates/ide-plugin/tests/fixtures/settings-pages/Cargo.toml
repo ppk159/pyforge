@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 serde_json = "1"
-openidea-plugin = { path = "../../../../../sdk/rust/openidea-plugin" }
+pyforge-plugin = { path = "../../../../../sdk/rust/pyforge-plugin" }
 
 [profile.release]
 opt-level = "s"

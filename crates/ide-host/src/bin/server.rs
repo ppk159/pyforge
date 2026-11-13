@@ -1,4 +1,4 @@
-//! `openidea-server --stdio`: the IDE backend for remote development, serving
+//! `pyforge-server --stdio`: the IDE backend for remote development, serving
 //! one desktop client over stdin / stdout (started by the client over SSH).
 
 use ide_host::plugins::remote::{RemotePluginLanguages, SYNC_COMMAND};
@@ -12,7 +12,7 @@ use std::sync::{Arc, OnceLock};
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--version") {
-        println!("openidea-server {} (protocol {})", env!("CARGO_PKG_VERSION"), rpc::PROTOCOL_VERSION);
+        println!("pyforge-server {} (protocol {})", env!("CARGO_PKG_VERSION"), rpc::PROTOCOL_VERSION);
         return;
     }
     if args.first().is_some_and(|a| a == "--connect") {
@@ -30,7 +30,7 @@ fn main() {
         std::process::exit(code);
     }
     if !args.iter().any(|a| a == "--stdio") {
-        eprintln!("usage: openidea-server --stdio | --connect <host> <port> | --version");
+        eprintln!("usage: pyforge-server --stdio | --connect <host> <port> | --version");
         std::process::exit(2);
     }
     // stdout carries the protocol: logs go to stderr.
@@ -39,10 +39,10 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("OPENIDEA_LOG").unwrap_or_else(|_| "info".into()))
         .init();
     let home = dirs::home_dir().unwrap_or_default();
-    let base = std::env::var_os("OPENIDEA_SERVER_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".openidea"));
+    let base = std::env::var_os("OPENIDEA_SERVER_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".pyforge"));
     // An SSH exec channel gets a minimal environment: take the login shell's, read
     // afresh on every start, plus the IDE-managed tools. Before any other thread starts.
-    ide_host::shell_env::inherit_login_shell_env("openidea-server");
+    ide_host::shell_env::inherit_login_shell_env("pyforge-server");
     let data_dir = base.join("data");
     ide_tools::extend_process_path(&data_dir);
     ide_dap::adapter::set_tools_root(ide_tools::tools_dir(&data_dir));
@@ -97,7 +97,7 @@ async fn run(base: PathBuf) -> i32 {
     {
         tracing::warn!("cannot trust {}: {e}", root.to_string_lossy());
     }
-    tracing::info!("openidea-server {} ready", env!("CARGO_PKG_VERSION"));
+    tracing::info!("pyforge-server {} ready", env!("CARGO_PKG_VERSION"));
     let mut dispatcher = Dispatcher::standard();
     if let Some(plugins) = &plugins {
         plugins.register(&mut dispatcher);

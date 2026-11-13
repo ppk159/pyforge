@@ -974,7 +974,7 @@ export function removeWatch(expression: string) {
   persistWatches();
 }
 
-const WATCH_KEY = "openidea.debugger.watches";
+const WATCH_KEY = "pyforge.debugger.watches";
 
 function persistWatches() {
   try {

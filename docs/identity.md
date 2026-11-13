@@ -30,7 +30,7 @@ crate 名和 Rust target 名是**内部标识**，用户看不到。改它们要
 1. **无法并存**：`tauri-plugin-single-instance` 按 identifier 判定。同 identifier
    意味着启动 PyForge 时，它会被转交给已经运行的 OpenIDEA，然后自己退出——
    用户看到的是 OpenIDEA 的窗口，PyForge 根本没起来。
-2. **数据目录冲突**：两者共用 `%APPDATA%\ai.l0ng.openidea`，共享设置、最近项目，
+2. **数据目录冲突**：两者共用 `%APPDATA%\ai.l0ng.pyforge`，共享设置、最近项目，
    以及同一个 WebView2 profile 目录。
 3. **自动更新会把它换掉**：上游的 updater endpoint 指向
    `github.com/l0ng-ai/openidea`。装了这个版本的人会被「更新」成上游 OpenIDEA。
@@ -50,12 +50,12 @@ crate 名和 Rust target 名是**内部标识**，用户看不到。改它们要
 
 能。identifier、可执行文件名、CLI 命令名、数据目录、凭据服务名全部不同：
 
-|            | 上游 OpenIDEA                | 本仓库构建                 |
-| ---------- | ---------------------------- | -------------------------- |
-| 可执行文件 | `openidea.exe`               | `pyforge.exe`              |
-| identifier | `ai.l0ng.openidea`           | `ai.pyforge.ide`           |
-| 数据       | `%APPDATA%\ai.l0ng.openidea` | `%APPDATA%\ai.pyforge.ide` |
-| CLI        | `openidea`                   | `pyforge`                  |
+|            | 上游 OpenIDEA               | 本仓库构建                 |
+| ---------- | --------------------------- | -------------------------- |
+| 可执行文件 | `openidea.exe`              | `pyforge.exe`              |
+| identifier | `ai.l0ng.pyforge`           | `ai.pyforge.ide`           |
+| 数据       | `%APPDATA%\ai.l0ng.pyforge` | `%APPDATA%\ai.pyforge.ide` |
+| CLI        | `openidea`                  | `pyforge`                  |
 
 唯一的共同点是**源码**：两者都来自同一个上游仓库。
 
@@ -63,20 +63,20 @@ crate 名和 Rust target 名是**内部标识**，用户看不到。改它们要
 
 改 identifier 时同步过的地方（漏一个就会不一致）：
 
-| 文件                                              | 内容                                           |
-| ------------------------------------------------- | ---------------------------------------------- |
-| `src-tauri/tauri.conf.json`                       | `identifier`、`mainBinaryName`、updater        |
-| `src-tauri/tauri.{windows,linux}.conf.json`       | 窗口 `title`（覆盖主配置，容易漏）             |
-| `src-tauri/tauri.macos.conf.json`                 | CLI 启动脚本的 bundle 资源路径                 |
-| `src-tauri/cli/pyforge`                           | 脚本内指向 `MacOS/pyforge`                     |
-| `src-tauri/src/cli.rs`                            | 报错前缀、bundle 内可执行文件路径              |
-| `src-tauri/src/dev.rs`                            | 开发版 identifier（每个 worktree 一个）        |
-| `src-tauri/src/commands/plugin.rs`                | 插件凭据的服务名                               |
-| `crates/ide-cli/src/install.rs`                   | `COMMAND` 常量、`LAUNCHER` 路径、`.cmd` 包装器 |
-| `crates/ide-cli/src/socket.rs`                    | 单实例管道/套接字名                            |
-| `crates/ide-ssh/src/secrets.rs`                   | 凭据管理器服务名                               |
-| `crates/ide-host/src/bin/openidea-plugin/main.rs` | 插件助手查找数据目录用的 identifier            |
-| `scripts/dev-session.ts`                          | 与 `dev.rs` 必须算出同一个开发版 identifier    |
+| 文件                                             | 内容                                           |
+| ------------------------------------------------ | ---------------------------------------------- |
+| `src-tauri/tauri.conf.json`                      | `identifier`、`mainBinaryName`、updater        |
+| `src-tauri/tauri.{windows,linux}.conf.json`      | 窗口 `title`（覆盖主配置，容易漏）             |
+| `src-tauri/tauri.macos.conf.json`                | CLI 启动脚本的 bundle 资源路径                 |
+| `src-tauri/cli/pyforge`                          | 脚本内指向 `MacOS/pyforge`                     |
+| `src-tauri/src/cli.rs`                           | 报错前缀、bundle 内可执行文件路径              |
+| `src-tauri/src/dev.rs`                           | 开发版 identifier（每个 worktree 一个）        |
+| `src-tauri/src/commands/plugin.rs`               | 插件凭据的服务名                               |
+| `crates/ide-cli/src/install.rs`                  | `COMMAND` 常量、`LAUNCHER` 路径、`.cmd` 包装器 |
+| `crates/ide-cli/src/socket.rs`                   | 单实例管道/套接字名                            |
+| `crates/ide-ssh/src/secrets.rs`                  | 凭据管理器服务名                               |
+| `crates/ide-host/src/bin/pyforge-plugin/main.rs` | 插件助手查找数据目录用的 identifier            |
+| `scripts/dev-session.ts`                         | 与 `dev.rs` 必须算出同一个开发版 identifier    |
 
 **没改**的两处：
 

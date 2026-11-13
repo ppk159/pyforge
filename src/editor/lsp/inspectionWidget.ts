@@ -34,7 +34,7 @@ export function countsOf(view: EditorView): Counts {
 function button(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
-  b.className = "cm-openidea-inspection-button";
+  b.className = "cm-pyforge-inspection-button";
   b.setAttribute("aria-label", label);
   b.title = label;
   b.addEventListener("mousedown", (e) => e.preventDefault());
@@ -48,7 +48,7 @@ class InspectionWidget {
 
   constructor(private view: EditorView) {
     this.dom = document.createElement("div");
-    this.dom.className = "cm-openidea-inspection";
+    this.dom.className = "cm-pyforge-inspection";
     this.dom.setAttribute("role", "toolbar");
     this.dom.setAttribute("aria-label", "Inspections");
     editorCorner(view).appendChild(this.dom);
@@ -78,20 +78,20 @@ class InspectionWidget {
         : "No problems found",
       open,
     );
-    summary.classList.add("cm-openidea-inspection-summary");
-    if (!total) summary.appendChild(iconNode("check", 14, "cm-openidea-inspection-ok"));
+    summary.classList.add("cm-pyforge-inspection-summary");
+    if (!total) summary.appendChild(iconNode("check", 14, "cm-pyforge-inspection-ok"));
     const add = (n: number, icon: string, cls: string) => {
       if (!n) return;
       const item = document.createElement("span");
-      item.className = `cm-openidea-inspection-count ${cls}`;
+      item.className = `cm-pyforge-inspection-count ${cls}`;
       item.appendChild(iconNode(icon, 14));
       item.appendChild(document.createTextNode(String(n)));
       summary.appendChild(item);
     };
-    add(c.error, "error", "cm-openidea-inspection-error");
-    add(c.warning, "warning", "cm-openidea-inspection-warning");
-    add(c.info, "warning", "cm-openidea-inspection-weak");
-    add(c.typo, "info", "cm-openidea-inspection-typo");
+    add(c.error, "error", "cm-pyforge-inspection-error");
+    add(c.warning, "warning", "cm-pyforge-inspection-warning");
+    add(c.info, "warning", "cm-pyforge-inspection-weak");
+    add(c.typo, "info", "cm-pyforge-inspection-typo");
     const children: HTMLElement[] = [summary];
     if (total) {
       const prev = button(
@@ -123,7 +123,7 @@ class InspectionWidget {
 const inspectionPlugin = ViewPlugin.fromClass(InspectionWidget);
 
 const inspectionTheme = EditorView.theme({
-  ".cm-openidea-inspection": {
+  ".cm-pyforge-inspection": {
     display: "flex",
     alignItems: "center",
     gap: "1px",
@@ -136,7 +136,7 @@ const inspectionTheme = EditorView.theme({
     WebkitUserSelect: "none",
     userSelect: "none",
   },
-  ".cm-openidea-inspection-button": {
+  ".cm-pyforge-inspection-button": {
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
@@ -150,16 +150,16 @@ const inspectionTheme = EditorView.theme({
     color: "inherit",
     font: "inherit",
   },
-  ".cm-openidea-inspection-button:hover": { backgroundColor: "var(--bg-toolbar-hover)" },
-  ".cm-openidea-inspection-button:focus-visible": { outline: "1px solid var(--focus-ring)", outlineOffset: "-1px" },
-  ".cm-openidea-inspection-summary": { padding: "0 5px" },
-  ".cm-openidea-inspection-count": { display: "inline-flex", alignItems: "center", gap: "3px" },
-  ".cm-openidea-icon": { display: "inline-flex", alignItems: "center" },
-  ".cm-openidea-inspection-error .cm-openidea-icon": { color: "var(--danger)" },
-  ".cm-openidea-inspection-warning .cm-openidea-icon": { color: "var(--warning)" },
-  ".cm-openidea-inspection-weak .cm-openidea-icon": { color: "var(--fg-weak-warning, var(--fg-faint))" },
-  ".cm-openidea-inspection-typo .cm-openidea-icon": { color: "var(--success)" },
-  ".cm-openidea-inspection-ok": { color: "var(--success)" },
+  ".cm-pyforge-inspection-button:hover": { backgroundColor: "var(--bg-toolbar-hover)" },
+  ".cm-pyforge-inspection-button:focus-visible": { outline: "1px solid var(--focus-ring)", outlineOffset: "-1px" },
+  ".cm-pyforge-inspection-summary": { padding: "0 5px" },
+  ".cm-pyforge-inspection-count": { display: "inline-flex", alignItems: "center", gap: "3px" },
+  ".cm-pyforge-icon": { display: "inline-flex", alignItems: "center" },
+  ".cm-pyforge-inspection-error .cm-pyforge-icon": { color: "var(--danger)" },
+  ".cm-pyforge-inspection-warning .cm-pyforge-icon": { color: "var(--warning)" },
+  ".cm-pyforge-inspection-weak .cm-pyforge-icon": { color: "var(--fg-weak-warning, var(--fg-faint))" },
+  ".cm-pyforge-inspection-typo .cm-pyforge-icon": { color: "var(--success)" },
+  ".cm-pyforge-inspection-ok": { color: "var(--success)" },
 });
 
 export function inspectionWidgetExtension() {

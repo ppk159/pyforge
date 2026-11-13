@@ -8,7 +8,7 @@ respective APIs at runtime.
 one complete array of `{projectUri, libraries: [{path, test}]}` objects and returns
 the number of changed projects. Paths name fully published, immutable directories.
 An empty array withdraws all owned libraries. Only library entries carrying
-`ai.openidea.kotlin=true` are removed; all other `IClasspathEntry` objects are
+`ai.pyforge.kotlin=true` are removed; all other `IClasspathEntry` objects are
 retained, including containers, access rules, attributes and project references.
 A Java model listener restores the desired snapshot after Maven reimport.
 

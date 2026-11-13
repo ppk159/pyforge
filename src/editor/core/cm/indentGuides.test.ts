@@ -39,25 +39,21 @@ describe("indent guides", () => {
     expect(guideVars(0, 4)).toBeNull();
     expect(guideVars(1, 4)).toBeNull();
     expect(guideVars(3, 4)).toEqual({
-      images: "var(--openidea-guide), var(--openidea-guide)",
+      images: "var(--pyforge-guide), var(--pyforge-guide)",
       positions: "calc(6px + 4ch) 0, calc(6px + 8ch) 0",
     });
   });
 
   it("positions each guide the same way on lines of different depth", () => {
     const v = mount(SOURCE);
-    expect(line(v, 1).classList.contains("cm-openidea-guides")).toBe(false);
-    expect(line(v, 2).style.getPropertyValue("--openidea-guide-positions")).toBe("calc(6px + 4ch) 0");
-    expect(line(v, 3).style.getPropertyValue("--openidea-guide-positions")).toBe(
-      "calc(6px + 4ch) 0, calc(6px + 8ch) 0",
-    );
+    expect(line(v, 1).classList.contains("cm-pyforge-guides")).toBe(false);
+    expect(line(v, 2).style.getPropertyValue("--pyforge-guide-positions")).toBe("calc(6px + 4ch) 0");
+    expect(line(v, 3).style.getPropertyValue("--pyforge-guide-positions")).toBe("calc(6px + 4ch) 0, calc(6px + 8ch) 0");
   });
 
   it("keeps guides through blank lines inside a block", () => {
     const v = mount(SOURCE);
-    expect(line(v, 4).style.getPropertyValue("--openidea-guide-positions")).toBe(
-      "calc(6px + 4ch) 0, calc(6px + 8ch) 0",
-    );
+    expect(line(v, 4).style.getPropertyValue("--pyforge-guide-positions")).toBe("calc(6px + 4ch) 0, calc(6px + 8ch) 0");
   });
 
   it("continues the guides of an annotated line through its code lens row", () => {
@@ -69,9 +65,9 @@ describe("indent guides", () => {
         { pos: doc.indexOf("impl"), title: "1 usage" },
       ]),
     ]);
-    const [implLens, fnLens] = [...v.contentDOM.querySelectorAll<HTMLElement>(".cm-openidea-lens")];
-    expect(v.contentDOM.classList.contains("cm-openidea-guidesOn")).toBe(true);
-    expect(fnLens!.style.getPropertyValue("--openidea-guide-positions")).toBe("calc(6px + 4ch) 0");
-    expect(implLens!.style.getPropertyValue("--openidea-guide-positions")).toBe("");
+    const [implLens, fnLens] = [...v.contentDOM.querySelectorAll<HTMLElement>(".cm-pyforge-lens")];
+    expect(v.contentDOM.classList.contains("cm-pyforge-guidesOn")).toBe(true);
+    expect(fnLens!.style.getPropertyValue("--pyforge-guide-positions")).toBe("calc(6px + 4ch) 0");
+    expect(implLens!.style.getPropertyValue("--pyforge-guide-positions")).toBe("");
   });
 });

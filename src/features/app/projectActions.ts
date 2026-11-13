@@ -15,25 +15,25 @@ import { tx } from "@/platform/i18n";
 
 /** localStorage prefixes of IDE-level state exported with the settings (templates, macros, layouts). */
 export const EXPORTED_STORAGE = [
-  "openidea.liveTemplates.",
-  "openidea.fileTemplates.",
-  "openidea.postfix.",
-  "openidea.macros.",
-  "openidea.toolWindowLayouts.",
+  "pyforge.liveTemplates.",
+  "pyforge.fileTemplates.",
+  "pyforge.postfix.",
+  "pyforge.macros.",
+  "pyforge.toolWindowLayouts.",
 ];
 
 /** IDE-level preferences kept in localStorage, exported with the settings as well. */
 const EXPORTED_KEYS = new Set([
-  "openidea.projectTree.options",
-  "openidea.todo.v1",
-  "openidea.vim.v1",
-  "openidea.vcs.diffOptions",
-  "openidea.vcs.diffPreview",
-  "openidea.vcs.branchesPopup.options",
-  "openidea.merge.autoApplyNonConflicting",
-  "openidea.markdown.defaultMode",
-  "openidea.imageViewer.chessboard",
-  "openidea.welcome.reopenLastProject",
+  "pyforge.projectTree.options",
+  "pyforge.todo.v1",
+  "pyforge.vim.v1",
+  "pyforge.vcs.diffOptions",
+  "pyforge.vcs.diffPreview",
+  "pyforge.vcs.branchesPopup.options",
+  "pyforge.merge.autoApplyNonConflicting",
+  "pyforge.markdown.defaultMode",
+  "pyforge.imageViewer.chessboard",
+  "pyforge.welcome.reopenLastProject",
 ]);
 
 const isExported = (key: string) => EXPORTED_KEYS.has(key) || EXPORTED_STORAGE.some((p) => key.startsWith(p));
@@ -59,7 +59,7 @@ async function exportSettings() {
   const { save } = await import("@tauri-apps/plugin-dialog");
   const path = await save({
     title: "Export Settings",
-    defaultPath: "openidea-settings.json",
+    defaultPath: "pyforge-settings.json",
     filters: [{ name: "PyForge settings", extensions: ["json"] }],
   });
   if (!path) return;

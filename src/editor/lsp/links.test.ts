@@ -94,7 +94,7 @@ describe("links and fragments", () => {
 });
 
 it("opens a container document link in the editor and resolves its fragment through virtual content", async () => {
-  const uri = "openidea-target://target/7/usr/lib/library.php";
+  const uri = "pyforge-target://target/7/usr/lib/library.php";
   const openFile = vi.fn(async () => {});
   provideEditorService({ openFile } as never);
   const read = vi.spyOn(commands, "lspVirtualDocument").mockResolvedValue({
