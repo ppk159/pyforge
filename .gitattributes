@@ -1,0 +1,33 @@
+# Line endings.
+#
+# Everything checked in is LF, and a checkout anywhere must produce LF — otherwise a
+# formatter that writes LF sees every file as misformatted. Windows' git defaults to
+# `core.autocrlf=true`, which rewrites LF to CRLF on clone; that is what made
+# `pnpm format:check` fail on CI while passing on a machine whose repository was
+# configured with `core.autocrlf=false`. This file overrides that per checkout.
+#
+# `text=auto` keeps git's own binary detection for the extensions not listed below.
+* text=auto eol=lf
+
+# Regenerate, never convert.
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.jar binary
+*.wasm binary
+*.dic binary
+*.zip binary
+*.gz binary
+*.pdf binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+
+# Patch files are read by patch tools that depend on their exact bytes.
+*.patch -text
+*.diff -text
