@@ -47,6 +47,22 @@ describe("startPointerDrag with a reordered macOS tap", () => {
     fire("pointerup", 0, 60, 0);
     expect(onEnd).toHaveBeenCalledWith(true, expect.objectContaining({ x: 60 }));
   });
+
+  it("reports the drop when leaving the window cancels the capture", () => {
+    const { onEnd } = start();
+    // Over another window the webview loses pointer capture and gets a cancel instead
+    // of a release; the last outside position is still the user's drop.
+    fire("pointermove", 1, -30, 200);
+    fire("pointercancel", 0, -30, 200);
+    expect(onEnd).toHaveBeenCalledWith(true, expect.objectContaining({ x: -30, y: 200 }));
+  });
+
+  it("drops nothing when the drag is cancelled inside the window", () => {
+    const { onEnd } = start();
+    fire("pointermove", 1, 40, 0);
+    fire("pointercancel", 0, 40, 0);
+    expect(onEnd).toHaveBeenCalledWith(true);
+  });
 });
 
 const viewport = { left: 0, top: 0, right: 1280, bottom: 800 };

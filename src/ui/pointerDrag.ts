@@ -64,6 +64,11 @@ export function isOutsideWindow(
   return x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom;
 }
 
+/** Whether `(x, y)` is outside the viewport: the pointer left this window. */
+function outsideViewport(x: number, y: number): boolean {
+  return x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
+}
+
 export type DropEdge = "left" | "right" | "top" | "bottom";
 
 /**
@@ -142,6 +147,7 @@ export function startPointerDrag(
 ) {
   if (e.button !== 0 || (requiresAlt() && !e.altKey)) return;
   const start = { x: e.clientX, y: e.clientY };
+  let last = start;
   let ghost: HTMLElement | null = null;
   const session = dragSession(data);
   const onMove = (ev: PointerEvent) => {
@@ -170,6 +176,7 @@ export function startPointerDrag(
     }
     // Late moves after release may still precede the pointerup; ignore, don't cancel the drop.
     if (!(ev.buttons & 1)) return;
+    last = { x: ev.clientX, y: ev.clientY };
     ghost.style.transform = `translate(${ev.clientX - start.x}px, ${ev.clientY - start.y}px)`;
     ghost.classList.toggle(styles.noTarget!, !session.move(ev.clientX, ev.clientY));
   };
@@ -203,6 +210,13 @@ export function startPointerDrag(
     session.cancel();
     const dragged = !!ghost;
     cleanup();
+    // Releasing over another window makes that window activate and the webview lose
+    // pointer capture, which arrives as a cancel rather than a release. Outside this
+    // viewport that is the user's drop, so report it instead of swallowing the drag.
+    if (dragged && outsideViewport(last.x, last.y)) {
+      opts.onEnd?.(true, { ...last, accepted: false });
+      return;
+    }
     opts.onEnd?.(dragged);
   };
   window.addEventListener("pointermove", onMove);

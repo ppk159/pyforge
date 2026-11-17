@@ -238,10 +238,11 @@ function PaneView({ paneId }: { paneId: string }) {
   const vertical = tabPrefs.placement === "left" || tabPrefs.placement === "right";
   const pinnedRow = tabPrefs.pinnedSeparateRow && pinnedCount > 0 && pinnedCount < tabs.length;
   const dnd = useMemo(() => {
-    // A tab released outside the window detaches into a forced new window.
-    const dropOutside = (raw: string) => {
+    // A tab released outside the window: the window the pointer was over takes the file,
+    // otherwise the tab gets a window of its own (see `EditorController.dropTabOutside`).
+    const dropOutside = (raw: string, x: number, y: number) => {
       const p = parseTabPayload(raw);
-      if (p) void ctrl.detachTab(p.paneId, p.tabId);
+      if (p) void ctrl.dropTabOutside(p.paneId, p.tabId, x, y);
     };
     const strip = (offset: number, pin?: boolean): TabsDnd => ({
       type: EDITOR_TAB_MIME,
