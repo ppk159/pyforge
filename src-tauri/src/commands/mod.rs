@@ -436,6 +436,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         window::window_open_project,
         window::window_open_files,
         window::window_open_file_in_new_window,
+        window::window_tab_drop,
+        window::window_open_file_in_window,
         window::window_open_remote,
         window::window_new,
         window::window_open_settings,

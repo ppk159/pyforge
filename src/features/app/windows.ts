@@ -72,12 +72,22 @@ type Positions = ReadonlyArray<{ path: string; line: number; column: number }>;
 async function openInEditor(files: readonly string[], positions: Positions = []): Promise<void> {
   for (const [i, path] of files.entries()) {
     const at = positions.find((p) => p.path === path);
+    // A file handed to this window by another one must not fail silently: nothing else
+    // would tell the user why the tab they moved here never appeared.
     await editorService()
       .openFile(path, {
         focus: i === files.length - 1,
         ...(at ? { selection: { line: at.line, col: at.column } } : {}),
       })
-      .catch((e) => console.warn(`could not open ${path}`, e));
+      .catch((e) => {
+        void commands.logFrontend("error", `consumeLaunch: could not open ${path}: ${String(e)}`);
+        notifications().notify({
+          level: "error",
+          title: t("app.window.openFailed", { name: basename(path) }),
+          body: errorText(e),
+          key: `app.open:${path}`,
+        });
+      });
   }
 }
 

@@ -184,3 +184,36 @@ describe("detachTab", () => {
     expect(commands.windowOpenFileInNewWindow).toHaveBeenCalledWith(expected, file);
   });
 });
+
+describe("dropTabOutside", () => {
+  const drop = (data: unknown) =>
+    vi.spyOn(commands, "windowTabDrop").mockResolvedValue({ status: "ok", data } as never);
+
+  beforeEach(() => {
+    vi.spyOn(commands, "windowOpenFileInWindow").mockResolvedValue({ status: "ok", data: null } as never);
+  });
+
+  it("gets its own window when the tab is released over the desktop", async () => {
+    drop({ kind: "newWindow" });
+    ctrl = new EditorController(createMemoryBackend({ [path]: "text\n" }));
+    ctrl.start();
+    await ctrl.openFile(path, { focus: false });
+    const [pane, id] = current();
+    expect(await ctrl.dropTabOutside(pane, id, -400, 900)).toBe(true);
+    expect(commands.windowOpenFileInNewWindow).toHaveBeenCalledOnce();
+    expect(commands.windowOpenFileInWindow).not.toHaveBeenCalled();
+    expect(hasTab(id)).toBe(false);
+  });
+
+  it("moves the file into the window under the pointer", async () => {
+    drop({ kind: "window", label: "project-2" });
+    ctrl = new EditorController(createMemoryBackend({ [path]: "text\n" }));
+    ctrl.start();
+    await ctrl.openFile(path, { focus: false });
+    const [pane, id] = current();
+    expect(await ctrl.dropTabOutside(pane, id, -20, 120)).toBe(true);
+    expect(commands.windowOpenFileInWindow).toHaveBeenCalledWith("project-2", path);
+    expect(hasTab(id)).toBe(false);
+    expect(commands.windowOpenFileInNewWindow).not.toHaveBeenCalled();
+  });
+});

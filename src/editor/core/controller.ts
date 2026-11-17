@@ -38,7 +38,7 @@ import { useDistractionFree } from "@/workbench/distractionFree";
 import { restoreMaximizedToolWindow } from "@/workbench/toolwindows/store";
 import { ask } from "@/workbench/messages";
 import { t } from "@/platform/i18n";
-import { call, commands } from "@/platform/ipc";
+import { call, commands, isTauri } from "@/platform/ipc";
 import { isRemoteWindow } from "@/platform/remote";
 import { fileIconName, showContextMenu, type MenuItem } from "@/ui";
 import { usePlatform } from "@/platform/platformInfo";
@@ -1507,8 +1507,26 @@ export class EditorController implements SlotHost {
   changeSplitOrientation(paneId: string) {
     this.apply((s) => changeSplitOrientation(s, paneId));
   }
-  /** Save or resolve the dirty guard, open the window, then remove the original tab. */
-  async detachTab(paneId: string, tabId: string): Promise<boolean> {
+  /**
+   * A tab released outside this window: over another PyForge window the file moves there
+   * (dragging a tab back in), anywhere else it gets a window of its own. `x`/`y` are the
+   * last client coordinates the webview saw, only a fallback for the platform cursor.
+   */
+  async dropTabOutside(paneId: string, tabId: string, x?: number, y?: number): Promise<boolean> {
+    const tab = useTabs.getState().panes[paneId]?.tabs.find((t) => t.id === tabId);
+    if (!tab?.input.path) return false;
+    const client = x === undefined || y === undefined ? null : ([x, y] as [number, number]);
+    const drop = await call(commands.windowTabDrop(client)).catch(() => null);
+    if (drop?.kind === "window") return this.detachTab(paneId, tabId, { into: drop.label });
+    return this.detachTab(paneId, tabId);
+  }
+  /**
+   * Save or resolve the dirty guard, open the file elsewhere, then remove the original tab.
+   * `into` moves it to that existing window (a tab dragged onto another window); without it
+   * the file gets a window of its own, which shares this window's project root so it uses
+   * the same index, language servers and documents instead of a second copy.
+   */
+  async detachTab(paneId: string, tabId: string, options: { into?: string } = {}): Promise<boolean> {
     const tab = useTabs.getState().panes[paneId]?.tabs.find((t) => t.id === tabId);
     const path = tab?.input.path;
     if (
@@ -1524,7 +1542,7 @@ export class EditorController implements SlotHost {
     const project = useProject.getState().project;
     const inProject =
       !!project && (project.workspace?.projects ?? [project.root]).some((root) => isSameOrInside(path, root));
-    return this.removeGuarded((s) => (s.panes[paneId] ? closeTab(s, paneId, tabId) : s), {
+    const moved = await this.removeGuarded((s) => (s.panes[paneId] ? closeTab(s, paneId, tabId) : s), {
       beforeRemove: async () => {
         if (!useTabs.getState().panes[paneId]?.tabs.some((t) => t.id === tabId)) return false;
         if (isTextTab(tab)) {
@@ -1533,10 +1551,10 @@ export class EditorController implements SlotHost {
           await slot.model.save("explicit");
         }
         try {
-          // The project root, so the new window shares this project's index, language
-          // servers and documents instead of indexing a second copy; the backend marks it
-          // a tab window, which hides the Project tree and the project name in the title.
-          await call(commands.windowOpenFileInNewWindow(inProject ? project.root : null, path));
+          // `into` hands the file to a window the user dropped it on; without it the tab
+          // becomes its own window, the File › Move Tab to New Window command.
+          if (options.into) await call(commands.windowOpenFileInWindow(options.into, path));
+          else await call(commands.windowOpenFileInNewWindow(inProject ? project.root : null, path));
           return true;
         } catch (e) {
           notifications().notify({
@@ -1549,6 +1567,8 @@ export class EditorController implements SlotHost {
         }
       },
     });
+    if (moved && options.into) closeEmptiedTabWindow();
+    return moved;
   }
   /** IDEA "Open in Opposite Group": the tab stays and a copy opens next door (or in a new split). */
   openInOpposite(paneId: string, tabId: string) {
@@ -2005,4 +2025,12 @@ function revealLabel(): string {
 
 function inPopup(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest("[data-popup]");
+}
+
+/** A detached window that moved its last file to another window has nothing left to show. */
+function closeEmptiedTabWindow() {
+  if (!isTauri() || !useProject.getState().tabWindow) return;
+  const empty = Object.values(useTabs.getState().panes).every((pane) => pane.tabs.length === 0);
+  if (!empty) return;
+  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => getCurrentWindow().close());
 }

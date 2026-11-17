@@ -906,6 +906,15 @@ export const commands = {
 	 */
 	windowOpenFileInNewWindow: (project: string | null, file: string) => typedError<OpenOutcome, IdeError>(__TAURI_INVOKE("window_open_file_in_new_window", { project, file })),
 	/**
+	 *  Where a tab dragged out of `window` goes: the PyForge window whose area the pointer was
+	 *  released over takes the file (dragging a tab back in), anything else gets a new window.
+	 *  `client` is the last pointer position this webview saw, a fallback for platforms that
+	 *  cannot report the cursor.
+	 */
+	windowTabDrop: (client: [number | null, number | null] | null) => typedError<TabDrop, IdeError>(__TAURI_INVOKE("window_tab_drop", { client })),
+	/**  Opens `file` in the existing window `label`: a tab dragged out of one window onto another. */
+	windowOpenFileInWindow: (label: string, file: string) => typedError<null, IdeError>(__TAURI_INVOKE("window_open_file_in_window", { label, file })),
+	/**
 	 *  [`window_open_project`] for folder `path` of `target` (an SSH host or a WSL distribution;
 	 *  Remote Development); a new window connects itself.
 	 */
@@ -8424,6 +8433,13 @@ export type SyntaxNode = {
 	/**  The node or a descendant is an error / missing node. */
 	hasError: boolean,
 };
+
+/**  Where a tab released outside its window goes. */
+export type TabDrop = 
+/**  The pointer was over window `label`: the file moves there, dragging a tab back in. */
+{ kind: "window"; label: string } | 
+/**  The desktop or another application: the tab gets a window of its own. */
+{ kind: "newWindow" };
 
 /**  A sortable table's order: the column and the direction. */
 export type TableSort = {

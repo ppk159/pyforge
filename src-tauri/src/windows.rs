@@ -836,6 +836,93 @@ pub fn open_project_window(
     Ok(OpenOutcome::Opened { label: window.label().to_owned() })
 }
 
+/// A window's rectangle in physical screen pixels, top-left origin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScreenRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl ScreenRect {
+    fn contains(self, x: f64, y: f64) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
+
+/// Where a tab released outside its window goes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum TabDrop {
+    /// The pointer was over window `label`: the file moves there, dragging a tab back in.
+    Window { label: String },
+    /// The desktop or another application: the tab gets a window of its own.
+    NewWindow,
+}
+
+/// Where a tab dropped at `point` (physical screen pixels) goes: the window the pointer is
+/// over takes it, else it becomes its own window. `others` are the app's other windows.
+pub fn classify_tab_drop(others: &[(String, ScreenRect)], point: (f64, f64)) -> TabDrop {
+    match others.iter().find(|(_, rect)| rect.contains(point.0, point.1)) {
+        Some((label, _)) => TabDrop::Window { label: label.clone() },
+        None => TabDrop::NewWindow,
+    }
+}
+
+fn screen_rect(window: &WebviewWindow) -> Option<ScreenRect> {
+    let position = window.inner_position().ok()?;
+    let size = window.inner_size().ok()?;
+    Some(ScreenRect {
+        x: position.x as f64,
+        y: position.y as f64,
+        width: size.width as f64,
+        height: size.height as f64,
+    })
+}
+
+/// The cursor in physical screen pixels: the platform's own pointer position, which is where
+/// the user let go even when the drag left this window (and lost pointer capture).
+fn cursor_position(window: &WebviewWindow, client: Option<(f64, f64)>) -> Option<(f64, f64)> {
+    if let Ok(cursor) = window.cursor_position() {
+        return Some((cursor.x, cursor.y));
+    }
+    let caller = screen_rect(window)?;
+    let (x, y) = client?;
+    let scale = window.scale_factor().unwrap_or(1.0);
+    Some((caller.x + x * scale, caller.y + y * scale))
+}
+
+/// Where a tab released from `window` goes. `client` is the last pointer position this
+/// webview saw, only a fallback for platforms that cannot report the cursor.
+pub fn tab_drop_at(window: &WebviewWindow, client: Option<(f64, f64)>) -> TabDrop {
+    let Some(point) = cursor_position(window, client) else { return TabDrop::NewWindow };
+    let candidates: Vec<(String, ScreenRect, bool)> = window
+        .app_handle()
+        .webview_windows()
+        .into_iter()
+        .filter(|(label, w)| {
+            label.as_str() != window.label()
+                && auxiliary_parent(label).is_none()
+                && w.is_visible().unwrap_or(false)
+                && !w.is_minimized().unwrap_or(false)
+        })
+        .filter_map(|(label, w)| screen_rect(&w).map(|rect| (label, rect, w.is_focused().unwrap_or(false))))
+        .collect();
+    // Overlapping windows: the one that just took the focus is the one under the pointer.
+    let mut candidates = candidates;
+    candidates.sort_by_key(|(_, _, focused)| !*focused);
+    let others: Vec<(String, ScreenRect)> = candidates.into_iter().map(|(label, rect, _)| (label, rect)).collect();
+    classify_tab_drop(&others, point)
+}
+
+/// Opens `file` in the existing window `label` (a tab dragged onto it), focusing that window.
+pub fn open_file_in_window(app: &AppHandle, label: &str, file: PathBuf) -> IdeResult<()> {
+    let window = app.get_webview_window(label).ok_or_else(|| IdeError::not_found("Window closed"))?;
+    send_files(app, &window, vec![file]);
+    Ok(())
+}
+
 /// Opens `file` in a forced new window: `project` (None: LightEdit) plus the
 /// single file, always creating a window even when the project is already open
 /// in another one (unlike [`open_project_window`], which focuses it). Used to
@@ -1540,10 +1627,7 @@ fn fit_to_work_area(window: &WebviewWindow) -> tauri::Result<()> {
     if fits {
         return Ok(());
     }
-    let size = (
-        (available.width - frame.0).max(1.0),
-        (available.height - frame.1).max(1.0),
-    );
+    let size = ((available.width - frame.0).max(1.0), (available.height - frame.1).max(1.0));
     // `set_min_size` may exceed the new size on a tiny work area; the work area wins.
     window.set_min_size(Some(
         tauri::LogicalSize::new(size.0.min(available.width).max(1.0), size.1.min(available.height).max(1.0))
@@ -1626,6 +1710,32 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    fn rect(x: f64, y: f64, width: f64, height: f64) -> ScreenRect {
+        ScreenRect { x, y, width, height }
+    }
+
+    #[test]
+    fn a_tab_released_over_another_window_moves_there() {
+        let others = vec![("project-1".to_owned(), rect(900.0, 0.0, 800.0, 600.0))];
+        assert_eq!(classify_tab_drop(&others, (1000.0, 300.0)), TabDrop::Window { label: "project-1".to_owned() });
+    }
+
+    #[test]
+    fn a_tab_released_over_no_window_gets_one_of_its_own() {
+        let others = vec![("project-1".to_owned(), rect(900.0, 0.0, 800.0, 600.0))];
+        // The desktop beside the windows, and this window's own area (not in `others`).
+        assert_eq!(classify_tab_drop(&others, (400.0, 900.0)), TabDrop::NewWindow);
+        assert_eq!(classify_tab_drop(&others, (400.0, 300.0)), TabDrop::NewWindow);
+    }
+
+    #[test]
+    fn the_window_edges_decide_which_one_takes_the_tab() {
+        let others = vec![("project-1".to_owned(), rect(800.0, 0.0, 400.0, 600.0))];
+        // Sharing an edge: the first pixel inside the other window already belongs to it.
+        assert_eq!(classify_tab_drop(&others, (799.0, 10.0)), TabDrop::NewWindow);
+        assert_eq!(classify_tab_drop(&others, (800.0, 10.0)), TabDrop::Window { label: "project-1".to_owned() });
     }
 
     #[test]

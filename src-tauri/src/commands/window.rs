@@ -52,6 +52,23 @@ pub async fn window_open_file_in_new_window(
     windows::open_file_in_new_window(&app, project, file)
 }
 
+/// Where a tab dragged out of `window` goes: the PyForge window whose area the pointer was
+/// released over takes the file (dragging a tab back in), anything else gets a new window.
+/// `client` is the last pointer position this webview saw, a fallback for platforms that
+/// cannot report the cursor.
+#[tauri::command]
+#[specta::specta]
+pub fn window_tab_drop(window: WebviewWindow, client: Option<(f64, f64)>) -> IdeResult<windows::TabDrop> {
+    Ok(windows::tab_drop_at(&window, client))
+}
+
+/// Opens `file` in the existing window `label`: a tab dragged out of one window onto another.
+#[tauri::command]
+#[specta::specta]
+pub async fn window_open_file_in_window(app: AppHandle, label: String, file: PathBuf) -> IdeResult<()> {
+    windows::open_file_in_window(&app, &label, file)
+}
+
 /// [`window_open_project`] for folder `path` of `target` (an SSH host or a WSL distribution;
 /// Remote Development); a new window connects itself.
 #[tauri::command]
