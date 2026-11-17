@@ -715,20 +715,32 @@ mod tests {
         server.set_diagnostics(a.path.clone(), vec![diag(2, 5, "a"), diag(0, 1, "outside"), diag(4, 6, "crosses")]);
         let items = server.set_diagnostics(b.path.clone(), vec![diag(7, 10, "b")]);
         mgr.emit_diagnostics(&server, b.path, items, Encoding::Utf16);
+        // A bare `unwrap` here reported only "Option::unwrap() on a None value" when this
+        // failed on CI, with nothing about what *was* emitted. The message names the path
+        // and every event received instead.
         let latest = || {
-            events
-                .lock()
-                .iter()
-                .rev()
-                .find_map(|e| match e {
-                    ide_core::IdeEvent::Diagnostics { path: p, source, items }
-                        if p.0 == path && source == &server.name =>
-                    {
-                        Some(items.clone())
-                    }
-                    _ => None,
-                })
-                .unwrap()
+            let all = events.lock();
+            let found = all.iter().rev().find_map(|e| match e {
+                ide_core::IdeEvent::Diagnostics { path: p, source, items } if p.0 == path && source == &server.name => {
+                    Some(items.clone())
+                }
+                _ => None,
+            });
+            match found {
+                Some(items) => items,
+                None => panic!(
+                    "no diagnostics for {} from server {:?}; the sink got {:?}",
+                    path.display(),
+                    server.name,
+                    all.iter()
+                        .map(|e| match e {
+                            ide_core::IdeEvent::Diagnostics { path, source, items } =>
+                                format!("Diagnostics {:?} from {source:?}: {} items", path, items.len()),
+                            other => format!("{other:?}"),
+                        })
+                        .collect::<Vec<_>>()
+                ),
+            }
         };
         assert_eq!(latest().iter().map(|d| d.message.as_str()).collect::<Vec<_>>().len(), 3);
         assert!(

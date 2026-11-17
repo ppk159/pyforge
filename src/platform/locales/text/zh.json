@@ -6958,5 +6958,18 @@
   "Application directory": "应用目录",
   "e.g. src": "例如 src",
   "`--app-dir`: put this directory first on the import path, as a src/ layout needs": "`--app-dir`：把该目录放在导入路径最前，src/ 布局需要这样",
-  "e.g. --host 0.0.0.0 --port 8000 --reload": "例如 --host 0.0.0.0 --port 8000 --reload"
+  "e.g. --host 0.0.0.0 --port 8000 --reload": "例如 --host 0.0.0.0 --port 8000 --reload",
+  "Could not copy": "无法复制",
+  "Export {name}": "导出 {name}",
+  "Exported to {path}": "已导出到 {path}",
+  "Export failed": "导出失败",
+  "Previous": "上一页",
+  "Next": "下一页",
+  "Exporting…": "导出中…",
+  "Export…": "导出…",
+  "Reading the table…": "正在读取表格…",
+  "View as Table": "以表格查看",
+  "Click to select the row": "点击选中整行",
+  "Click to select the column; right-click copies its name": "点击选中整列；右键复制列名",
+  "Only the leading columns are shown": "仅显示前几列"
 }

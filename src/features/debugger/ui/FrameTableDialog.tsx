@@ -119,7 +119,7 @@ export function FrameTableDialog({
 
   const copy = useCallback((text: string, what: string) => {
     void navigator.clipboard?.writeText(text).then(
-      () => notifications().notify({ level: "info", title: `Copied ${what}` }),
+      () => notifications().notify({ level: "info", title: tx`Copied ${what}` }),
       () => notifications().notify({ level: "error", title: "Could not copy" }),
     );
   }, []);
@@ -208,7 +208,7 @@ export function FrameTableDialog({
             <span className={styles.status}>
               {shape}
               {total ? ` — ${total}` : ""}
-              {table.columnsTruncated ? " — Only the leading columns are shown" : ""}
+              {table.columnsTruncated ? ` — ${tx("Only the leading columns are shown")}` : ""}
             </span>
             <span className={styles.pager}>
               <Button

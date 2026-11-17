@@ -167,8 +167,8 @@ async function evaluate(session: DebugSessionId, frameId: number | null, express
  *
  * Scanned rather than `JSON.parse`d: Python writes `\'` inside a single-quoted result,
  * which is not a JSON escape, and wrapping the body in double quotes to reuse `JSON.parse`
- * needs a lookbehind to tell a real quote from an escaped one — `(?<!\)` needs Safari
- * 16.4, which this app does not require.
+ * needs a lookbehind to tell a real quote from an escaped one — a regex feature this
+ * app cannot use (see `webkitCompatibility.test.ts`).
  */
 export function unquote(value: string): string {
   const t = value.trim();
