@@ -48,7 +48,7 @@
   "mainBinaryName": "pyforge",
   "plugins": {
     "updater": {
-      "pubkey": "untrusted comment: minisign public key: 532220677CF20C14\nRWQUDPJ8ZyAiU870AuHx7VkuBNZEHohm/6uVNXVkrvvHSe0Ettnzx08E\n",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUzMjIyMDY3N0NGMjBDMTQKUldRVURQSjhaeUFpVTg3MEF1SHg3Vmt1Qk5aRUhvaG0vNnVWTlhWa3J2dkhTZTBFdHRuengwOEUK",
       "endpoints": ["https://github.com/ppk159/pyforge/releases/latest/download/latest.json"]
     }
   }
