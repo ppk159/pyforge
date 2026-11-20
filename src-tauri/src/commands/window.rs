@@ -369,7 +369,7 @@ pub async fn app_cli_uninstall() -> IdeResult<Vec<ide_core::IpcPath>> {
 #[serde(rename_all = "camelCase")]
 pub struct BuildInfo {
     pub version: String,
-    /// Build id from CI (`OPENIDEA_BUILD` at compile time), else `dev`.
+    /// Build id from CI (`PYFORGE_BUILD` at compile time), else `dev`.
     pub build: String,
     pub profile: String,
     pub os: String,
@@ -384,7 +384,7 @@ pub struct BuildInfo {
 pub fn app_build_info(app: AppHandle) -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION").into(),
-        build: option_env!("OPENIDEA_BUILD").unwrap_or("dev").into(),
+        build: option_env!("PYFORGE_BUILD").unwrap_or("dev").into(),
         profile: if cfg!(debug_assertions) { "debug" } else { "release" }.into(),
         os: std::env::consts::OS.into(),
         arch: std::env::consts::ARCH.into(),
@@ -411,28 +411,15 @@ pub struct UpdateCheck {
 }
 
 fn update_endpoint_env() -> Option<String> {
-    std::env::var("OPENIDEA_UPDATE_ENDPOINT").ok().filter(|s| !s.trim().is_empty())
+    std::env::var("PYFORGE_UPDATE_ENDPOINT").ok().filter(|s| !s.trim().is_empty())
 }
 
 /// Whether an update endpoint is configured: `plugins.updater.endpoints` in
-/// tauri.conf.json, or the `OPENIDEA_UPDATE_ENDPOINT` environment variable. Empty by
+/// tauri.conf.json, or the `PYFORGE_UPDATE_ENDPOINT` environment variable. Empty by
 /// default, and "Check for Updates…" is hidden then.
 pub fn updates_configured<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
     !config_endpoints(app).is_empty() || update_endpoint_env().is_some()
 }
-
-/// Where updates are downloaded from (System Settings › Updates).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub enum UpdateSource {
-    /// The GitHub releases named in tauri.conf.json.
-    #[default]
-    Github,
-    /// The CNB mirror of the same releases, for networks where GitHub is slow.
-    Cnb,
-}
-
-const CNB_ENDPOINT: &str = "https://cnb.cool/l0ng-ai/openidea/-/releases/latest/download/latest.json";
 
 fn config_endpoints<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
     app.config()
@@ -445,28 +432,14 @@ fn config_endpoints<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The endpoints tried in order: `source` first, the other source when it fails or has
-/// no manifest. Bundles are signed, so either source's manifest and downloads verify.
-/// No official endpoint (a build without updates) means no mirror either.
-fn source_endpoints(official: Vec<String>, source: UpdateSource) -> Vec<String> {
-    if official.is_empty() {
-        return official;
-    }
-    let mirror = vec![CNB_ENDPOINT.to_string()];
-    match source {
-        UpdateSource::Github => [official, mirror].concat(),
-        UpdateSource::Cnb => [mirror, official].concat(),
-    }
-}
-
-fn updater(app: &AppHandle, source: UpdateSource) -> IdeResult<Option<tauri_plugin_updater::Updater>> {
+fn updater(app: &AppHandle) -> IdeResult<Option<tauri_plugin_updater::Updater>> {
     use tauri_plugin_updater::UpdaterExt;
     if !updates_configured(app) {
         return Ok(None);
     }
     let endpoints = match update_endpoint_env() {
         Some(url) => vec![url],
-        None => source_endpoints(config_endpoints(app), source),
+        None => config_endpoints(app),
     };
     let endpoints = endpoints
         .iter()
@@ -484,8 +457,8 @@ fn updater(app: &AppHandle, source: UpdateSource) -> IdeResult<Option<tauri_plug
 
 #[tauri::command]
 #[specta::specta]
-pub async fn app_check_update(app: AppHandle, source: UpdateSource) -> IdeResult<UpdateCheck> {
-    let Some(updater) = updater(&app, source)? else {
+pub async fn app_check_update(app: AppHandle) -> IdeResult<UpdateCheck> {
+    let Some(updater) = updater(&app)? else {
         return Ok(UpdateCheck { enabled: false, update: None });
     };
     let update = updater.check().await.map_err(|e| IdeError::unavailable(e.to_string()))?;
@@ -505,12 +478,12 @@ pub async fn app_check_update(app: AppHandle, source: UpdateSource) -> IdeResult
 /// not reported: the user didn't ask for this check.
 #[tauri::command]
 #[specta::specta]
-pub async fn app_startup_update_check(app: AppHandle, source: UpdateSource) -> Option<UpdateInfo> {
+pub async fn app_startup_update_check(app: AppHandle) -> Option<UpdateInfo> {
     static DONE: AtomicBool = AtomicBool::new(false);
     if cfg!(debug_assertions) || DONE.swap(true, Ordering::SeqCst) {
         return None;
     }
-    match app_check_update(app, source).await {
+    match app_check_update(app).await {
         Ok(check) => check.update,
         Err(e) => {
             tracing::warn!("startup update check failed: {e}");
@@ -578,7 +551,6 @@ impl Drop for InstallingGuard {
 pub async fn app_install_update(
     app: AppHandle,
     state: State<'_, AppState>,
-    source: UpdateSource,
     request: RequestId,
     on_progress: Channel<UpdateProgress>,
 ) -> IdeResult<()> {
@@ -586,7 +558,7 @@ pub async fn app_install_update(
         InstallingGuard::acquire().ok_or_else(|| IdeError::unavailable("an update is already being installed"))?;
     let token = state.host.begin_request(request);
     let result = async {
-        let updater = updater(&app, source)?.ok_or_else(|| IdeError::unavailable("updates are not configured"))?;
+        let updater = updater(&app)?.ok_or_else(|| IdeError::unavailable("updates are not configured"))?;
         let update = tokio::select! {
             r = updater.check() => r.map_err(|e| IdeError::unavailable(e.to_string()))?,
             _ = token.cancelled() => return Err(IdeError::cancelled()),
@@ -664,13 +636,25 @@ mod tests {
         assert!(ProgressThrottle::default().chunk(1, Some(0)).is_some());
     }
 
+    /// An update endpoint naming another project makes this one offer *that* project's
+    /// releases: 0.1.2 shipped with a CNB mirror of the upstream OpenIDEA repo, so a
+    /// Chinese UI was told "OpenIDEA 0.1.49 is available" and installing it would have
+    /// failed signature verification. Every endpoint must name this repository.
     #[test]
-    fn chosen_source_is_tried_first_and_the_other_after_it() {
-        let github = "https://github.com/l0ng-ai/openidea/releases/latest/download/latest.json".to_string();
-        assert_eq!(source_endpoints(vec![github.clone()], UpdateSource::Github), [github.clone(), CNB_ENDPOINT.into()]);
-        assert_eq!(source_endpoints(vec![github.clone()], UpdateSource::Cnb), [CNB_ENDPOINT.into(), github]);
-        // A build without an update endpoint stays without one.
-        assert!(source_endpoints(Vec::new(), UpdateSource::Cnb).is_empty());
+    fn update_endpoints_belong_to_this_project() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).expect("tauri.conf.json parses");
+        let endpoints = config["plugins"]["updater"]["endpoints"]
+            .as_array()
+            .expect("plugins.updater.endpoints is an array");
+        assert!(!endpoints.is_empty(), "a build with no endpoint cannot update");
+        for endpoint in endpoints {
+            let url = endpoint.as_str().expect("an endpoint is a string");
+            assert!(
+                url.starts_with("https://github.com/ppk159/pyforge/"),
+                "{url} is not this project's releases"
+            );
+        }
     }
 
     #[test]

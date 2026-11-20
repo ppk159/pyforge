@@ -61,7 +61,7 @@
   "app.update.cancelled": "Actualización cancelada",
   "app.update.checking": "Buscando actualizaciones…",
   "app.update.disabled": "Las actualizaciones automáticas no están configuradas",
-  "app.update.disabledBody": "Configura un endpoint de actualización (OPENIDEA_UPDATE_ENDPOINT o plugins.updater.endpoints) para habilitar la búsqueda de actualizaciones.",
+  "app.update.disabledBody": "Configura un endpoint de actualización (PYFORGE_UPDATE_ENDPOINT o plugins.updater.endpoints) para habilitar la búsqueda de actualizaciones.",
   "app.update.downloading": "Descargando PyForge {version}",
   "app.update.failed": "Error al buscar actualizaciones",
   "app.update.install": "Instalar y reiniciar",

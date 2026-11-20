@@ -67,7 +67,7 @@
   "app.update.cancelled": "업데이트가 취소되었습니다",
   "app.update.checking": "업데이트 확인 중…",
   "app.update.disabled": "자동 업데이트가 구성되지 않았습니다",
-  "app.update.disabledBody": "업데이트 확인을 활성화하려면 업데이트 엔드포인트(OPENIDEA_UPDATE_ENDPOINT 또는 plugins.updater.endpoints)를 설정하세요.",
+  "app.update.disabledBody": "업데이트 확인을 활성화하려면 업데이트 엔드포인트(PYFORGE_UPDATE_ENDPOINT 또는 plugins.updater.endpoints)를 설정하세요.",
   "app.update.downloading": "PyForge {version} 다운로드 중",
   "app.update.failed": "업데이트 확인에 실패했습니다",
   "app.update.install": "설치 후 다시 시작",

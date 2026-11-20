@@ -161,8 +161,9 @@ PyForge 做的事情就是：**把这些重构自己实现掉**，不再等服�
 <details open>
 <summary><b>工程与稳定性</b></summary>
 
-- **这是 fork，不是插件**。上游每发一版都要手动合；我改动约 37 个文件、
-  跨 Rust 与 TS，且删/隐藏了 JVM 相关 UI，**每次同步都会冲突**。
+- **独立仓库，不是插件，也不与上游同步**。代码库以 OpenIDEA v0.1.39 的源码快照
+  （单个 `baseline` 提交、无上游历史）为起点独立演进，不追上游、不合并上游，
+  因此不会有上游修好的 bug 自动流进来。
 - **测试基线里有预先存在的失败**：前端 `scripts/check-webkit.test.ts`（Windows 路径）
   与 `reviewDiff.test.tsx`（超时抖动）；Rust `ide-core`/`ide-sdk` 有 2 个 venv 测试。
   这些与本次改动无关，但确实没修。

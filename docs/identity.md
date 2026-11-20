@@ -53,30 +53,57 @@
 
 ## 四、updater 的处理
 
-两处配置：
+从 0.1.2 起走自己的更新通道：
 
 ```json
-"bundle": { "createUpdaterArtifacts": false },
-"plugins": { "updater": { "endpoints": [], "pubkey": "…" } }
+"bundle": { "createUpdaterArtifacts": true },
+"plugins": {
+  "updater": {
+    "endpoints": ["https://github.com/ppk159/pyforge/releases/latest/download/latest.json"],
+    "pubkey": "…"
+  }
+}
 ```
 
-**为什么是重置而不是删除整个 `plugins.updater`**：`lib.rs` 无条件注册 updater
+0.1.0 / 0.1.1 发布时通道是关的（`endpoints: []`、`createUpdaterArtifacts: false`），
+那两版没有 updater，需要手动装一次 0.1.2 才能进入自动升级。**通道一旦启用，
+之后每个版本都必须带正确签名**，否则老用户无法升级。
+
+**为什么当初是重置而不是删除整个 `plugins.updater`**：`lib.rs` 无条件注册 updater
 插件，配置缺失会让它 panic（`invalid type: null, expected struct Config`）。
 空 `endpoints` 让 `updates_configured()` 返回 false，UI 显示「更新已禁用」。
 
-理由同上一条第 3 点：这个 POC 没有自己的更新通道，留着上游 endpoint 等于给对方
-一个把 PyForge 覆盖掉的机会。
+### 公钥格式：整段 base64，不要再解码
 
-要发布自己的更新时：
+`npx tauri signer generate` 写出的 `pyforge.key.pub` **本身就是 base64**
+（解码后才是 `untrusted comment: …` 那种文本）。`plugins.updater.pubkey`
+要的是**这段 base64 原样**，插件自己会解码。0.1.2 首次发版构建时我把解码后的
+文本填了进去，签名步骤直接崩：
 
-1. `npx tauri signer generate -w ~/.tauri/pyforge.key`
-2. 把新公钥填进 `plugins.updater.pubkey`
-3. `endpoints` 指向 `https://github.com/ppk159/pyforge/releases/latest/download/latest.json`
-4. `createUpdaterArtifacts` 改成 `true`
-5. 构建时提供 `TAURI_SIGNING_PRIVATE_KEY`
-6. 每次发版生成并上传 `latest.json`
+```
+failed to decode pubkey: Invalid symbol 32, offset 9
+```
 
-⚠️ 一旦启用，**之后每个版本都必须带正确签名**，否则老用户无法升级。
+偏移 9 是 `untrusted` 后的空格。构建本身是成功的（62 分 55 秒、两个安装包都产出了），
+只有签名失败，所以没有 `.sig`、没有 Release，tag 可以安全移掉重打。
+
+### CNB 镜像：已删除，不要再加回来
+
+上游用一个 CNB 镜像作为 GitHub 慢时的备份：
+
+```
+https://cnb.cool/l0ng-ai/openidea/-/releases/latest/download/latest.json
+```
+
+改名时漏了这一条，而前端在**中文界面下默认优先用它**，于是 0.1.2 的用户一启动就
+被告知「OpenIDEA 0.1.49 is available」并列出上游的更新说明。点安装会因签名不匹配
+失败（签名保护住了，没有真的装成别的东西），但提示本身就是错的。
+
+镜像和「更新源」设置项一起删掉了：本仓库没有 CNB 镜像，留着只会再指错地方。
+`update_endpoints_belong_to_this_project` 这个测试读取 `tauri.conf.json`，
+要求每个 endpoint 都以 `https://github.com/ppk159/pyforge/` 开头。
+
+要把通道指到别处（镜像、内网），改 `tauri.conf.json` 的 `endpoints` 并同步改那条测试。
 
 ## 五、两个版本能同时装吗
 

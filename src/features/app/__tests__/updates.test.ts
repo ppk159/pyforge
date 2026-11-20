@@ -20,7 +20,7 @@ function deferred<T>() {
 let install: ReturnType<typeof deferred<Result<null>>>;
 let check: ReturnType<typeof deferred<Result<UpdateCheck>>>;
 let channel: Channel | null;
-const appInstallUpdate = vi.fn((_source: string, _request: number, ch: Channel) => {
+const appInstallUpdate = vi.fn((_request: number, ch: Channel) => {
   channel = ch;
   return install.promise;
 });
@@ -55,7 +55,6 @@ const {
   installUpdate,
   notifyUpdate,
   progressText,
-  updateSource,
   CHECK_TASK_ID,
   INSTALL_TASK_ID,
   UPDATE_KEY,
@@ -153,32 +152,11 @@ describe("Install and Restart", () => {
     install = deferred();
     const cancelled = installUpdate("0.1.22");
     task(INSTALL_TASK_ID)!.cancel!();
-    expect(cancelRequest).toHaveBeenCalledWith(appInstallUpdate.mock.calls.at(-1)![1]);
+    expect(cancelRequest).toHaveBeenCalledWith(appInstallUpdate.mock.calls.at(-1)![0]);
     install.resolve({ status: "error", error: { kind: "cancelled", message: "cancelled" } });
     await cancelled;
     expect(notes.at(-1)).toMatchObject({ level: "info", title: "Update cancelled", key: UPDATE_KEY });
     expect(appRestart).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["a failed", "unavailable", "github", "CNB", "cnb"],
-    ["a failed", "unavailable", "cnb", "GitHub", "github"],
-    ["a cancelled (likely slow)", "cancelled", "cnb", "GitHub", "github"],
-  ])("offers %s download from %s again from the other source", async (_case, kind, from, label, to) => {
-    useProject.setState({ settings: { general: { updateSource: from }, appearance: {} } as unknown as Settings });
-    const first = installUpdate("0.1.22");
-    install.resolve({ status: "error", error: { kind, message: kind } });
-    await first;
-    const action = notes.at(-1)!.actions!.at(-1)!;
-    expect(action.label).toBe(`Retry with ${label}`);
-
-    install = deferred();
-    action.run();
-    await tick();
-    expect(settingsSet).toHaveBeenCalledWith("global", "general.updateSource", JSON.stringify(to));
-    expect(appInstallUpdate.mock.calls.at(-1)![0]).toBe(to);
-    install.resolve(ok(null));
-    await tick();
   });
 });
 
@@ -279,36 +257,6 @@ describe("Check for Updates", () => {
     check.resolve(ok({ enabled: true, update: null }));
     await done;
     expect(notes.at(-1)?.title).toBe("PyForge 0.1.21 is up to date");
-  });
-});
-
-describe("updateSource", () => {
-  const withSettings = (updateSource: string | undefined, locale: string | undefined) =>
-    useProject.setState({ settings: { general: { updateSource }, appearance: { locale } } as unknown as Settings });
-
-  it.each([
-    ["auto", "zh", "cnb"],
-    ["auto", "zh-CN", "cnb"],
-    ["auto", "en", "github"],
-    ["auto", "ko", "github"],
-    [undefined, "zh", "cnb"],
-    ["github", "zh", "github"],
-    ["cnb", "en", "cnb"],
-    ["bogus", "en", "github"],
-  ])("%s with the %s UI uses %s", (setting, locale, expected) => {
-    withSettings(setting, locale);
-    expect(updateSource()).toBe(expected);
-  });
-
-  it("is passed to the check and the install", async () => {
-    withSettings("cnb", "en");
-    void checkForUpdates();
-    expect(appCheckUpdate).toHaveBeenCalledWith("cnb");
-    check.resolve(ok({ enabled: true, update: null }));
-    void installUpdate("0.1.22");
-    expect(appInstallUpdate.mock.calls.at(-1)![0]).toBe("cnb");
-    install.resolve(ok(null));
-    await tick();
   });
 });
 

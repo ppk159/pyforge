@@ -60,7 +60,7 @@
   "app.update.cancelled": "Mise à jour annulée",
   "app.update.checking": "Recherche de mises à jour…",
   "app.update.disabled": "Les mises à jour automatiques ne sont pas configurées",
-  "app.update.disabledBody": "Définissez un point de terminaison de mise à jour (OPENIDEA_UPDATE_ENDPOINT ou plugins.updater.endpoints) pour activer la recherche de mises à jour.",
+  "app.update.disabledBody": "Définissez un point de terminaison de mise à jour (PYFORGE_UPDATE_ENDPOINT ou plugins.updater.endpoints) pour activer la recherche de mises à jour.",
   "app.update.downloading": "Téléchargement de PyForge {version}",
   "app.update.failed": "Échec de la recherche de mises à jour",
   "app.update.install": "Installer et redémarrer",

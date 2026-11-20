@@ -61,7 +61,7 @@
   "app.update.cancelled": "Anulowano aktualizację",
   "app.update.checking": "Sprawdzanie aktualizacji…",
   "app.update.disabled": "Aktualizacje automatyczne nie są skonfigurowane",
-  "app.update.disabledBody": "Skonfiguruj punkt końcowy aktualizacji (OPENIDEA_UPDATE_ENDPOINT lub plugins.updater.endpoints), aby włączyć sprawdzanie aktualizacji.",
+  "app.update.disabledBody": "Skonfiguruj punkt końcowy aktualizacji (PYFORGE_UPDATE_ENDPOINT lub plugins.updater.endpoints), aby włączyć sprawdzanie aktualizacji.",
   "app.update.downloading": "Pobieranie PyForge {version}",
   "app.update.failed": "Nie udało się sprawdzić aktualizacji",
   "app.update.install": "Zainstaluj i uruchom ponownie",

@@ -114,7 +114,7 @@ Python IDE 实验版，目标只有一个：验证「不启动 JVM 也能有像�
 - **JVM 功能已移除**：Gradle / Maven / Spring Boot / Tomcat 不在配置列表里
 - **自动探测运行配置已移除**：配置需要手写
 - **只验证过 Windows**
-- **这是 fork 不是插件**：上游更新要手动合
+- **独立仓库，不与上游同步**：代码库从 OpenIDEA v0.1.39 的源码快照独立演进，上游修复不会自动进来
 
 完整清单见仓库 [README](https://github.com/ppk159/pyforge#已知不足)。
 

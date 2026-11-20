@@ -7,7 +7,7 @@
  * repeated click joins the running check or install instead of starting another.
  */
 import { Channel } from "@tauri-apps/api/core";
-import { resolveLocale, t } from "@/platform/i18n";
+import { t } from "@/platform/i18n";
 import {
   call,
   commands,
@@ -16,7 +16,6 @@ import {
   nextRequestId,
   type UpdateInfo,
   type UpdateProgress,
-  type UpdateSource,
 } from "@/platform/ipc";
 import { useProject } from "@/platform/project";
 import { notifications } from "@/workbench/contributions";
@@ -29,39 +28,6 @@ export const INSTALL_TASK_ID = "app.update.install";
 
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
-}
-
-/** System Settings › Updates › Update source; `auto` picks the CNB mirror for the Chinese UI. */
-export function updateSource(): UpdateSource {
-  const { settings } = useProject.getState();
-  const chosen = settings?.general?.updateSource;
-  if (chosen === "github" || chosen === "cnb") return chosen;
-  return resolveLocale(settings?.appearance?.locale) === "zh" ? "cnb" : "github";
-}
-
-const SOURCE_NAMES: Record<UpdateSource, string> = { github: "GitHub", cnb: "CNB" };
-
-/** Makes `source` the update source; the retry it precedes uses it even if saving fails. */
-async function chooseSource(source: UpdateSource) {
-  try {
-    useProject.setState({
-      settings: await call(commands.settingsSet("global", "general.updateSource", JSON.stringify(source))),
-    });
-  } catch {
-    /* the choice still applies to this retry */
-  }
-}
-
-/**
- * Offered once a download failed or was cancelled (likely too slow): the same install from
- * the other source. A check never needs it, since it already falls back to the other source.
- */
-function otherSourceAction(version: string, source: UpdateSource) {
-  const other: UpdateSource = source === "cnb" ? "github" : "cnb";
-  return {
-    label: t("app.update.retryWith", { source: SOURCE_NAMES[other] }),
-    run: () => void chooseSource(other).then(() => installUpdate(version, other)),
-  };
 }
 
 let checking: Promise<void> | null = null;
@@ -91,7 +57,7 @@ async function runCheck() {
       userInitiated: true,
     });
   try {
-    const r = await Promise.race([call(commands.appCheckUpdate(updateSource())), abandoned]);
+    const r = await Promise.race([call(commands.appCheckUpdate()), abandoned]);
     if (r === "cancelled") return;
     if (!r.enabled) {
       notifications().notify({
@@ -128,7 +94,7 @@ async function runCheck() {
 /** Silent check once per app start; only an available update is shown. */
 export async function checkForUpdatesOnStartup(): Promise<void> {
   if (!isTauri()) return;
-  const update = await commands.appStartupUpdateCheck(updateSource()).catch(() => null);
+  const update = await commands.appStartupUpdateCheck().catch(() => null);
   if (update) notifyUpdate(update);
 }
 
@@ -163,13 +129,13 @@ export function progressText(p: UpdateProgress): { message: string; fraction: nu
 }
 
 /** Downloads and installs `version`, then restarts. A second call while one runs joins it. */
-export function installUpdate(version: string, source = updateSource()): Promise<void> {
+export function installUpdate(version: string): Promise<void> {
   if (!isTauri()) return Promise.resolve();
-  installing ??= runInstall(version, source).finally(() => (installing = null));
+  installing ??= runInstall(version).finally(() => (installing = null));
   return installing;
 }
 
-async function runInstall(version: string, source: UpdateSource) {
+async function runInstall(version: string) {
   const title = t("app.update.downloading", { version });
   const request = nextRequestId();
   const cancel = () => void commands.cancelRequest(request).catch(() => {});
@@ -206,14 +172,13 @@ async function runInstall(version: string, source: UpdateSource) {
   // Replaces the notification whose action is now spent.
   balloon([{ label: t("app.update.cancel"), run: cancel }]);
   try {
-    await call(commands.appInstallUpdate(source, request, channel));
+    await call(commands.appInstallUpdate(request, channel));
   } catch (e) {
     if (isCancelled(e)) {
       notifications().notify({
         level: "info",
         title: t("app.update.cancelled"),
         key: UPDATE_KEY,
-        actions: [otherSourceAction(version, source)],
         userInitiated: true,
       });
     } else {
@@ -222,10 +187,7 @@ async function runInstall(version: string, source: UpdateSource) {
         title: t("app.update.installFailed"),
         body: errorText(e),
         key: UPDATE_KEY,
-        actions: [
-          { label: t("app.update.retry"), run: () => void installUpdate(version, source) },
-          otherSourceAction(version, source),
-        ],
+        actions: [{ label: t("app.update.retry"), run: () => void installUpdate(version) }],
         userInitiated: true,
       });
     }
