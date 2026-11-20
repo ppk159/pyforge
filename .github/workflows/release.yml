@@ -1,4 +1,4 @@
-# Release build: a `v*` tag (or a manual run) builds PyForge on GitHub's machines
+# Release build: a manual run on `master` builds PyForge, tags the commit it built
 # and attaches what it produced to a release.
 #
 # Why this exists: a local release build takes 50-70 minutes and peaks at 7.7 GB of
@@ -6,24 +6,40 @@
 # have. The runner has a 6-hour job limit, so the build fits with room to spare once
 # the Rust cache is warm.
 #
+# Why it builds on `master` and not on a tag: caches do not travel between refs, and
+# every tag is its own pseudo-ref (`refs/heads/refs/tags/v0.1.2` in the cache API), so
+# a build on a tag is always cold — measured in this repo with two tags on one commit
+# and one constant key: the second run said "Cache not found", while a re-running the
+# same tag restored it. `master` is a ref that repeats, so the second release built
+# here starts from what the first one left behind. The tag is created afterwards,
+# pointing at the commit that was actually built.
+#
 # Windows only, deliberately. macOS and Linux have never been built or run for this
-# fork, and a workflow that fails on two targets out of three is worse than one that
-# covers the target that is actually tested.
+# project, and a workflow that fails on two targets out of three is worse than one
+# that covers the target that is actually tested.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
-  # A manual run builds and uploads the artifacts without touching a release: the
-  # first attempt at a workflow is usually wrong, and this is how it gets debugged.
+  # Manual only. A `push: tags: [v*]` trigger would fire again on the tag this
+  # workflow itself creates, building everything twice.
   workflow_dispatch:
+    inputs:
+      # Builds and uploads the artifacts but publishes nothing. Useful twice: to try a
+      # change to this workflow without spending a version number, and to warm the
+      # cache on `master` before the run that actually publishes.
+      dry_run:
+        description: "Build only: no tag, no release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+# Not `cancel-in-progress`: a second dispatch must not kill a build that is halfway
+# through signing the installers.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -31,6 +47,38 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
+
+      # The version comes from the tree, not from an input: `pnpm release:prepare`
+      # bumps four files, and a tag that disagrees with them would ship a build that
+      # reports the wrong version and cannot update itself.
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          tauri="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          cargo="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [ "$version" != "$tauri" ] || [ "$version" != "$cargo" ]; then
+            echo "::error::version mismatch: package.json $version, tauri.conf.json $tauri, Cargo.toml $cargo"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "notes=RELEASE-$version.md" >> "$GITHUB_OUTPUT"
+
+      # A tag is published the moment it exists (`draft: false`), so a second run for
+      # the same version has to stop here rather than try to overwrite it.
+      - name: Fail if this version is already released
+        if: inputs.dry_run != true
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ steps.version.outputs.tag }}'
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::$tag already exists; bump the version with \`pnpm release:prepare\`"
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
         with:
@@ -45,34 +93,39 @@ jobs:
 
       # The build is the expensive part: ~7 GB of target/ across a run. The workspace
       # root is the repository root (`Cargo.toml` lists `crates/*` and `src-tauri`), so
-      # `target/` is there. Pointing this at `src-tauri` named a directory that does not
-      # exist: the cache watched nothing and every release compiled the 1054
-      # dependencies from scratch.
+      # `target/` is there.
       #
-      # No `key:` here. This action derives one that ignores our own version numbers:
-      # it zeroes `package.version` in every workspace `Cargo.toml` and, when hashing
-      # `Cargo.lock`, keeps only the packages carrying a `source`/`checksum` — the
-      # registry dependencies. The workspace's own crates are `path` dependencies with
-      # neither, so bumping the version cannot move the key. An explicit
-      # `key: ${{ hashFiles('Cargo.lock') }}` was here (v0.1.2 and earlier) and did
-      # exactly that: 78 lines changed between v0.1.1 and v0.1.2, all of them
-      # `version = "0.1.1"` becoming `version = "0.1.2"`, no dependency at all.
+      # No explicit `key:`: this action derives one that ignores our own version
+      # numbers — it zeroes `package.version` in every workspace `Cargo.toml` and, when
+      # hashing `Cargo.lock`, keeps only the packages carrying a `source`/`checksum`,
+      # i.e. the registry dependencies. Our own crates are `path` dependencies with
+      # neither, so bumping the version cannot move the key.
       #
-      # That line was not, however, why v0.1.2 spent 62m55s rebuilding: this cache does
-      # not travel between tags at all. A run restores from its own ref and from the
-      # default branch; tag refs are recorded as `refs/heads/refs/tags/v0.1.2`, one
-      # pseudo-branch per tag, so v0.1.3 cannot see what v0.1.2 stored. Measured in this
-      # repo with two tags on one commit and one constant key: the second run reported
-      # "Cache not found", while a re-run of the same tag restored it. Every release is
-      # therefore a cold build; what this cache still saves is a retry of the same tag
-      # after a failure (which is how v0.1.2 recovered). Making releases warm means
-      # building on a ref that repeats — `master` — not tightening this key.
+      # `shared-key` is what keeps this cache separate from CI's. The key contains the
+      # Rust version but not the cargo profile, so both workflows on `master` would
+      # otherwise compute the SAME key and the first to save would win: CI saves a
+      # debug-only `target/`, this job restores it, adds release artefacts, and then
+      # cannot save because the key is taken — leaving every release to compile 1054
+      # dependencies in release mode again. A distinct prefix gives the release build
+      # its own entry, which repeats because it lives on `master`.
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
+          shared-key: release
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The plugin ABI is a promise to installed plugins: `wit/` is what the next
+      # release will speak, `tests/api/released/` is what the shipped one speaks, and
+      # `pnpm release:prepare` copies the former over the latter when the API version
+      # moves. If they differ here, either the copy was skipped or the API changed after
+      # it, and publishing would break every plugin built against the released version.
+      # `sdk/rust/pyforge-plugin/tests/api_frozen.rs` asserts the same thing, but CI
+      # runs `cargo test --lib`, which does not reach an integration test.
+      - name: Plugin API snapshot matches wit/
+        shell: bash
+        run: diff -r wit/ sdk/rust/pyforge-plugin/tests/api/released/
 
       # `pnpm build` runs `tsc --noEmit` first, so a type error fails the release
       # rather than shipping. `tauri build` invokes it via beforeBuildCommand.
@@ -81,9 +134,8 @@ jobs:
       # in tauri.conf.json. Losing it means no installed copy can ever be updated again.
       - name: Build
         env:
-          # Shows in About › Build, so a report says which build the user runs. Unset
-          # here it would read "dev", which is indistinguishable from a local build.
-          PYFORGE_BUILD: ${{ github.ref_name }}
+          # Shows in About › Build, so a report says which build the user runs.
+          PYFORGE_BUILD: ${{ steps.version.outputs.tag }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build
@@ -104,41 +156,68 @@ jobs:
           find target/release/bundle -type f -name '*.sig' -exec cp {} out/ \; 2>/dev/null || true
           ls -lh out
 
+      # The manifest an installed copy polls. It names the installer and carries the
+      # signature that copy verifies against its built-in public key, so it has to be
+      # built from the same run that signed the installer. `--notes` is what the update
+      # balloon shows, so it stays a sentence; the full notes are the release body.
+      - name: Write latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/make-latest-json.ts \
+            --version '${{ steps.version.outputs.version }}' \
+            --tag '${{ steps.version.outputs.tag }}' \
+            --notes "See the release notes."
+          cp latest.json out/latest.json
+
+      # Kept even though the release gets the same files: when the publishing step is
+      # the one that breaks, the build is not lost with it.
       - uses: actions/upload-artifact@v4
         with:
-          name: pyforge-windows
+          name: pyforge-windows-${{ steps.version.outputs.version }}
           path: out/*
           if-no-files-found: error
           retention-days: 14
 
-      # The manifest an installed copy polls. It names the installer and carries the
-      # signature that copy verifies against its built-in public key, so it has to be
-      # built from the same run that signed the installer.
-      - name: Write latest.json
-        if: startsWith(github.ref, 'refs/tags/v')
+      # `tag_name` makes this action create the tag, pointing at the commit this run
+      # checked out — the one that was built, not whatever `master` has become since.
+      # Only a tag that is pushed makes it public; `draft: false` because the updater
+      # fetches `latest.json` from `releases/latest/download/…`, and GitHub excludes
+      # drafts from that URL, so a draft would never be seen by an installed copy.
+      #
+      # The notes are `RELEASE-<version>.md` from the tree when it exists — that is the
+      # file a release is supposed to carry, and reading it here saves editing the
+      # release by hand afterwards. The terse fallback is for a build made before the
+      # notes were written.
+      - name: Check for release notes
+        id: notes
         shell: bash
         run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          node scripts/make-latest-json.ts --version "$version" --tag "$GITHUB_REF_NAME"             --notes "See the release notes." 
-          cp latest.json out/latest.json
+          if [ -f '${{ steps.version.outputs.notes }}' ]; then
+            echo "file=${{ steps.version.outputs.notes }}" >> "$GITHUB_OUTPUT"
+          fi
 
-      # A manual run stops here: the artifacts are on the run's page, and no release
-      # is created. Only a tag publishes.
-      #
-      # `draft: false` because the updater fetches `latest.json` from
-      # `releases/latest/download/…`: GitHub excludes drafts from that URL, so a draft
-      # release would never be seen by an installed copy. The notes below are the body a
-      # user reads; replace them with the real ones before tagging.
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish with notes
+        if: steps.notes.outputs.file != '' && inputs.dry_run != true
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: PyForge ${{ steps.version.outputs.version }}
           files: out/*
           draft: false
-          # Unsigned builds trip SmartScreen, and most bugs in this fork are upstream's.
+          body_path: ${{ steps.notes.outputs.file }}
+
+      - name: Publish without notes
+        if: steps.notes.outputs.file == '' && inputs.dry_run != true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: PyForge ${{ steps.version.outputs.version }}
+          files: out/*
+          draft: false
+          # Unsigned builds trip SmartScreen, and most bugs in this project are upstream's.
           body: |
-            PyForge ${{ github.ref_name }} — a test build, not a product.
+            PyForge ${{ steps.version.outputs.version }} — a test build, not a product.
 
             - **Unsigned.** Windows SmartScreen will warn on first launch: choose
               “More information” → “Run anyway”.
@@ -146,4 +225,4 @@ jobs:
               some Windows 10 installs do not. The installer brings it.
             - Auto-update is on: an installed copy checks `latest.json` for a newer version.
             - Most of what you see is upstream [OpenIDEA](https://github.com/l0ng-ai/openidea);
-              see the repository README for what this fork adds and what it lacks.
+              see the repository README for what this project adds and what it lacks.

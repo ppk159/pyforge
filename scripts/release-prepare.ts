@@ -2,8 +2,9 @@
  * Prepares the release commit: `pnpm release:prepare 0.1.38` sets the app version in
  * Cargo.toml, package.json and src-tauri/tauri.conf.json, refreshes Cargo.lock, and,
  * when wit/ carries a newer plugin API than the released snapshot, copies wit/*.wit
- * over sdk/rust/pyforge-plugin/tests/api/released/ (the release workflow refuses a
- * tag whose wit/ and snapshot versions differ). Commit the result as `chore: v<version>`.
+ * over sdk/rust/pyforge-plugin/tests/api/released/ (the Release workflow diffs the two
+ * and refuses to publish when they differ). Commit the result as `chore: v<version>`
+ * and push it; the workflow on `master` creates the tag itself.
  */
 import { spawnSync } from "node:child_process";
 import { copyFileSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -101,7 +102,10 @@ function main() {
       ? `plugin API ${api.from} -> ${api.to}: copied wit/*.wit to ${SNAPSHOT}/`
       : `plugin API ${api.to}: unchanged since the last release`,
   );
-  console.log(`next: commit as "chore: v${version}", then tag v${version}`);
+  // The tag is created by the Release workflow, not by hand: it builds on `master`
+  // (so the Rust cache carries over between releases) and tags the commit it built.
+  console.log(`next: commit as "chore: v${version}", push to master, then run the Release workflow`);
+  console.log(`      write RELEASE-${version}.md first — the workflow publishes it as the release body`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
