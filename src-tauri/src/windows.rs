@@ -1747,6 +1747,14 @@ mod tests {
     }
 
     #[test]
+    fn the_launch_event_matches_the_frontend_listener() {
+        // `src/features/app/windows.ts` listens for this exact string. The two names drifted
+        // apart during the 0.1.1 rename and every launch handed to a running window was
+        // dropped; that was found by grepping, so pin it here.
+        assert_eq!(LAUNCH_EVENT, "pyforge://launch");
+    }
+
+    #[test]
     fn frame_color_follows_theme_and_os_mode() {
         let mut a = AppearanceSettings::default();
         assert_eq!(frame_color(&a, true), Color(0xe9, 0xea, 0xee, 0xff));
