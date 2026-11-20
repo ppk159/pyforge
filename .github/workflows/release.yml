@@ -43,17 +43,33 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # The build is the expensive part: ~7 GB of target/ across a run. Keying on
-      # Cargo.lock keeps a warmed cache valid until a dependency actually changes.
-      # The workspace root is the repository root (`Cargo.toml` lists `crates/*` and
-      # `src-tauri`), so `target/` and `Cargo.lock` are both there. Pointing this at
-      # `src-tauri` named a directory that does not exist: the cache watched nothing,
-      # `hashFiles` returned the empty string, and every release compiled the 1054
+      # The build is the expensive part: ~7 GB of target/ across a run. The workspace
+      # root is the repository root (`Cargo.toml` lists `crates/*` and `src-tauri`), so
+      # `target/` is there. Pointing this at `src-tauri` named a directory that does not
+      # exist: the cache watched nothing and every release compiled the 1054
       # dependencies from scratch.
+      #
+      # No `key:` here. This action derives one that ignores our own version numbers:
+      # it zeroes `package.version` in every workspace `Cargo.toml` and, when hashing
+      # `Cargo.lock`, keeps only the packages carrying a `source`/`checksum` — the
+      # registry dependencies. The workspace's own crates are `path` dependencies with
+      # neither, so bumping the version cannot move the key. An explicit
+      # `key: ${{ hashFiles('Cargo.lock') }}` was here (v0.1.2 and earlier) and did
+      # exactly that: 78 lines changed between v0.1.1 and v0.1.2, all of them
+      # `version = "0.1.1"` becoming `version = "0.1.2"`, no dependency at all.
+      #
+      # That line was not, however, why v0.1.2 spent 62m55s rebuilding: this cache does
+      # not travel between tags at all. A run restores from its own ref and from the
+      # default branch; tag refs are recorded as `refs/heads/refs/tags/v0.1.2`, one
+      # pseudo-branch per tag, so v0.1.3 cannot see what v0.1.2 stored. Measured in this
+      # repo with two tags on one commit and one constant key: the second run reported
+      # "Cache not found", while a re-run of the same tag restored it. Every release is
+      # therefore a cold build; what this cache still saves is a retry of the same tag
+      # after a failure (which is how v0.1.2 recovered). Making releases warm means
+      # building on a ref that repeats — `master` — not tightening this key.
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
-          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
